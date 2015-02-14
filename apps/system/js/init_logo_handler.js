@@ -95,7 +95,7 @@ var InitLogoHandler = {
     this.logoLoader = logoLoader;
     logoLoader.onnotfound = this._removeCarrierPowerOn.bind(this);
     logoLoader.onload = this._appendCarrierPowerOn.bind(this);
-    System.request('registerHierarchy', this);
+    Service.request('registerHierarchy', this);
   },
 
   handleEvent: function ilh_handleEvent() {
@@ -174,7 +174,7 @@ var InitLogoHandler = {
     this.animated = true;
 
     self.publish('-deactivated');
-    System.request('unregisterHierarchy', self);
+    Service.request('unregisterHierarchy', self);
 
     // No carrier logo - Just animate OS logo.
     if (!self.logoLoader.found) {
@@ -221,7 +221,7 @@ var InitLogoHandler = {
       self.osLogo.removeEventListener('transitionend', transOsLogo);
       self.osLogo.parentNode.removeChild(self.osLogo);
       delete self.osLogo; // Don't entrain the DOM nodes.
-      window.mozPerformance.timing.mozOsLogoEnd = Date.now();
+      window.performance.mark('osLogoEnd');
       window.dispatchEvent(new CustomEvent('logohidden'));
       if (callback) {
         callback();

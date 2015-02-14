@@ -22,6 +22,7 @@ exports.unobserve = function() {
 exports.onAlarm = function(alarm) {
   debug('Will request cpu wake lock...');
   var lock = navigator.requestWakeLock('cpu');
+  debug('Received cpu lock. Will issue notification...');
   return issueNotification(alarm).then(() => {
     debug('Will release cpu wake lock...');
     lock.unlock();
@@ -56,14 +57,11 @@ function issueNotification(alarm) {
       distance: distance
     });
 
-    debug(
-      'Will send event notification with title:', title,
-      'description:', event.remote.description, '...'
-    );
-    notification.app = exports.app;
+    var body = event.remote.description || '';
+    debug('Will send event notification with title:', title, 'body:', body);
     return notification.sendNotification(
       title,
-      event.remote.description,
+      body,
       `/alarm-display/${busytime._id}`
     );
   });

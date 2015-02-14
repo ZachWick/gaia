@@ -60,6 +60,11 @@
     ele.classList.add('visible');
   };
 
+  BaseUI.prototype.isShown = function bu_isShown(ele) {
+    ele = ele || this.element;
+    return ele && ele.classList.contains('visible');
+  };
+
   BaseUI.prototype.hide = function bu_hide(ele) {
     ele = ele || this.element;
     ele.classList.remove('visible');
@@ -119,7 +124,7 @@
   BaseUI.prototype.debug = function bu_debug(msg) {
     if (DEBUG && ('DEBUG' in this.constructor && this.constructor.DEBUG)) {
       console.log('[' + this.CLASS_NAME + '][' + this.customID() + ']' +
-        '[' + System.currentTime() + ']' +
+        '[' + Service.currentTime() + ']' +
         Array.slice(arguments).concat());
     }
   };

@@ -78,6 +78,7 @@ var OptionMenu = function(options) {
   // Create the structure
   this.form = document.createElement('form');
   this.form.dataset.type = options.type || 'action';
+  this.form.dataset.subtype = 'menu';
   this.form.setAttribute('role', 'dialog');
   this.form.tabIndex = -1;
 
@@ -120,6 +121,7 @@ var OptionMenu = function(options) {
   // For each option, we append the item and listener
   items.forEach(function renderOption(item) {
     var button = document.createElement('button');
+    button.type = 'button';
     if (item.l10nId) {
       navigator.mozL10n.setAttributes(button, item.l10nId, item.l10nArgs);
     } else if (item.name && item.name.length) {
@@ -146,8 +148,15 @@ var OptionMenu = function(options) {
     }
 
     if (!this.form.classList.contains('visible') && this.form.parentNode) {
-      document.body.removeChild(this.form);
+      this.form.remove();
+    } else {
+      // Focus form for accessibility
+      this.form.focus();
     }
+
+    // If we add a class, the animation will not be perform properly.
+    // see Bug 1095338 for further information
+    document.body.style.pointerEvents = 'initial';
   }.bind(this));
 
   menu.addEventListener('click', function(event) {
@@ -178,6 +187,9 @@ var OptionMenu = function(options) {
 
 // We prototype functions to show/hide the UI of action-menu
 OptionMenu.prototype.show = function() {
+  // Remove the focus to hide the keyboard asap
+  document.activeElement && document.activeElement.blur();
+
   if (!this.form.parentNode) {
     document.body.appendChild(this.form);
 
@@ -186,8 +198,10 @@ OptionMenu.prototype.show = function() {
     this.form.clientTop;
   }
   this.form.classList.add('visible');
-  // Focus form to blur anything triggered keyboard
-  this.form.focus();
+  // Prevent to execute another action.
+  // If we add a class, the animation will not be perform properly.
+  // see Bug 1095338 for further information
+  document.body.style.pointerEvents = 'none';
 };
 
 OptionMenu.prototype.hide = function() {

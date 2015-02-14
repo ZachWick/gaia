@@ -14,7 +14,7 @@ class TestEnduranceSmsConversation(GaiaEnduranceTestCase):
 
     # summary page
     _summary_header_locator = ('xpath', "//h1[text()='Messages']")
-    _create_new_message_locator = ('id', 'icon-add')
+    _create_new_message_locator = ('id', 'threads-composer-link')
     _unread_message_locator = ('css selector', 'li > a.unread')
 
     # message composition
@@ -73,7 +73,7 @@ class TestEnduranceSmsConversation(GaiaEnduranceTestCase):
         # type phone number and message text
         contact_field = self.marionette.find_element(
             *self._receiver_input_locator)
-        contact_field.send_keys(self.testvars['carrier']['phone_number'])
+        contact_field.send_keys(self.testvars['local_phone_numbers'][0])
         message_field = self.marionette.find_element(
             *self._message_field_locator)
         message_field.send_keys(_text_message_content)

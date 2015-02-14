@@ -1,6 +1,6 @@
 'use strict';
 
-/* global LayoutManager, KeyboardEvent, LayoutNormalizer */
+/* global LayoutManager, KeyboardEvent, LayoutNormalizer, LayoutKeyNormalizer */
 
 require('/js/keyboard/layout_normalizer.js');
 require('/js/keyboard/layout_loader.js');
@@ -8,6 +8,8 @@ require('/js/keyboard/layout_manager.js');
 
 suite('LayoutManager', function() {
   var realKeyboards;
+
+  var stubNormalizeKey;
 
   var expectedFooLayout = {
     pages: [
@@ -23,7 +25,7 @@ suite('LayoutManager', function() {
 
   suiteSetup(function() {
     realKeyboards = window.Keyboards;
-    // for skae of simplicity, we bypass these two normalizations
+    // for sake of simplicity, we bypass normalizations
     sinon.stub(LayoutNormalizer.prototype, '_normalizePageKeys');
     sinon.stub(LayoutNormalizer.prototype, '_normalizePageAltKeys');
   });
@@ -32,22 +34,14 @@ suite('LayoutManager', function() {
     window.Keyboards = realKeyboards;
   });
 
-  // since bug 1035619, enter key's layout properties will always come
-  // from its prototype. lastest chai.js assert.deepEqual take prototype into
-  // consideration, but layout have some property defined in prototype,
-  // so we do the comparison by ourselves with a helper function
-  var assertExpectedLayouts = function (test, expected, msg) {
-    assert.equal(test.imEngine, expected.imEngine, msg);
-    assert.equal(test.layoutName, expected.layoutName, msg);
-    assert.equal(test.pageIndex, expected.pageIndex, msg);
-    for (var i = 0; i < test.keys.length; i++) {
-      for (var j = 0; j < test.keys[i].length; j++) {
-        for (var key in test.keys[i][j]) {
-          assert.equal(test.keys[i][j][key], expected.keys[i][j][key], msg);
-        }
-      }
-    }
-  };
+  setup(function() {
+    stubNormalizeKey =
+      sinon.stub(LayoutKeyNormalizer.prototype, 'normalizeKey').returnsArg(0);
+  });
+
+  teardown(function() {
+    stubNormalizeKey.restore();
+  });
 
   test('start', function() {
     window.Keyboards = {};
@@ -286,26 +280,33 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
             [ { keyCode: KeyboardEvent.DOM_VK_ALT,
               value: '12&',
-              uppercaseValue: '12&',
-              isSpecialKey: true,
               ratio: 2.0,
               ariaLabel: 'alternateLayoutKey2',
               className: 'page-switch-key',
               targetPage: 1 },
-              { value: ',', ratio: 1, keyCode: 44, keyCodeUpper: 44,
-                lowercaseValue: ',', uppercaseValue: ',', isSpecialKey: false },
+              { value: ',' },
               { value: '&nbsp', ratio: 4, keyCode: 32 },
-              { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                lowercaseValue: '.', uppercaseValue: '.', isSpecialKey: false },
+              { value: '.' },
               { value: 'ENTER', ratio: 2.0,
                 keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
 
-        assert.equal(manager.currentPage.keys[1][2].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
+
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 2,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: ','}, false),
+                      'commaKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -322,27 +323,33 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
             [ { keyCode: KeyboardEvent.DOM_VK_ALT,
               value: '90+',
-              uppercaseValue: '90+',
-              isSpecialKey: true,
               ratio: 2.0,
               ariaLabel: 'alternateLayoutKey2',
               className: 'page-switch-key',
               targetPage: 1 },
-              { value: ',', ratio: 1, keyCode: 44, keyCodeUpper: 44,
-                lowercaseValue: ',', uppercaseValue: ',', isSpecialKey: false },
+              { value: ',' },
               { value: '&nbsp', ratio: 4, keyCode: 32 },
-              { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                lowercaseValue: '.', uppercaseValue: '.', isSpecialKey: false },
+              { value: '.' },
               { value: 'ENTER', ratio: 2.0,
                 keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
 
-        assert.equal(manager.currentPage.keys[1][2].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '90+',
+          ratio: 2,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: ','}, false),
+                      'commaKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -461,30 +468,33 @@ suite('LayoutManager', function() {
             keys: [ [ { value: 'A' } ],
                     [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                         value: 'ABC',
-                        uppercaseValue: 'ABC',
-                        isSpecialKey: true,
                         ratio: 2.0,
                         ariaLabel: 'basicLayoutKey2',
                         className: 'page-switch-key',
                         targetPage: 0 },
-                      { value: ',', ratio: 1, keyCode: 44, keyCodeUpper: 44,
-                        lowercaseValue: ',', uppercaseValue: ',',
-                        isSpecialKey: false },
+                      { value: ',' },
                       { value: '&nbsp', ratio: 4, keyCode: 32 },
-                      { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                        lowercaseValue: '.', uppercaseValue: '.',
-                        isSpecialKey: false },
+                      { value: '.' },
                       { value: 'ENTER', ratio: 2.0,
                         keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-          assertExpectedLayouts(manager.currentPage, expectedPage);
-          assert.equal(manager.currentPage.imEngine,
-                       spaceLayout.imEngine);
-          assert.equal(manager.currentPage.__proto__,
-            defaultLayout.pages[1], 'proto is set correctly for layout.');
-          assert.equal(manager.currentPage.keys[1][2].__proto__,
-            defaultLayout.pages[1].keys[1][0],
-            'proto is set correctly for space key.');
+          Object.setPrototypeOf(expectedPage, defaultLayout.pages[1]);
+          Object.setPrototypeOf(expectedPage.keys[1][2],
+                                defaultLayout.pages[1].keys[1][0]);
+          assert.deepEqual(manager.currentPage, expectedPage);
+
+          assert.isTrue(stubNormalizeKey.calledWithExactly({
+            keyCode: KeyboardEvent.DOM_VK_ALT,
+            value: 'ABC',
+            ratio: 2,
+            className: 'page-switch-key',
+            ariaLabel: 'basicLayoutKey2',
+            targetPage: 0
+          }, false), 'pageSwitchingKey was not normalized');
+          assert.isTrue(stubNormalizeKey.calledWithExactly({value: ','}, false),
+                        'commaKey was not normalized');
+          assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                        'periodKey was not normalized');
         }, onReject).then(done, done);
       });
     }
@@ -507,28 +517,34 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'A' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: 'XYZ',
-                      uppercaseValue: 'XYZ',
-                      isSpecialKey: true,
                       ratio: 2.0,
                       ariaLabel: 'basicLayoutKey2',
                       className: 'page-switch-key',
                       targetPage: 0 },
-                    { value: ',', ratio: 1, keyCode: 44, keyCodeUpper: 44,
-                      lowercaseValue: ',', uppercaseValue: ',',
-                      isSpecialKey: false },
+                    { value: ',' },
                     { value: '&nbsp', ratio: 4, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     { value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          defaultLayout.pages[1], 'proto is set correctly for layout.');
-        assert.equal(manager.currentPage.keys[1][2].__proto__,
-          defaultLayout.pages[1].keys[1][0],
-          'proto is set correctly for space key.');
+
+        Object.setPrototypeOf(expectedPage, defaultLayout.pages[1]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              defaultLayout.pages[1].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
+
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: 'XYZ',
+          ratio: 2,
+          className: 'page-switch-key',
+          ariaLabel: 'basicLayoutKey2',
+          targetPage: 0
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: ','}, false),
+                      'commaKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -569,28 +585,33 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: 'ABC',
-                      uppercaseValue: 'ABC',
-                      isSpecialKey: true,
                       ratio: 2.0,
                       ariaLabel: 'basicLayoutKey2',
                       className: 'page-switch-key',
                       targetPage: 0 },
-                    { value: ',', ratio: 1, keyCode: 44, keyCodeUpper: 44,
-                      lowercaseValue: ',', uppercaseValue: ',',
-                      isSpecialKey: false },
+                    { value: ',' },
                     { value: '&nbsp', ratio: 4, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     { value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          defaultLayout.pages[2], 'proto is set correctly for layout.');
-        assert.equal(manager.currentPage.keys[1][2].__proto__,
-          defaultLayout.pages[2].keys[1][0],
-          'proto is set correctly for space key.');
+        Object.setPrototypeOf(expectedPage, defaultLayout.pages[2]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              defaultLayout.pages[2].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
+
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: 'ABC',
+          ratio: 2,
+          className: 'page-switch-key',
+          ariaLabel: 'basicLayoutKey2',
+          targetPage: 0
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: ','}, false),
+                      'commaKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -605,22 +626,21 @@ suite('LayoutManager', function() {
           layoutName: 'spaceLayout',
           pageIndex: 0,
           keys: [ [ { value: 'S' } ],
-                  [ { value: ',', ratio: 1, keyCode: 44, keyCodeUpper: 44,
-                      lowercaseValue: ',', uppercaseValue: ',',
-                      isSpecialKey: false },
+                  [ { value: ',' },
                     { value: '&nbsp', ratio: 6, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     { value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
-        assert.equal(manager.currentPage.keys[1][1].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][1],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
+
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: ','}, false),
+                      'commaKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -636,8 +656,6 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: '12&',
-                      uppercaseValue: '12&',
-                      isSpecialKey: true,
                       ratio: 2.0,
                       ariaLabel: 'alternateLayoutKey2',
                       className: 'page-switch-key',
@@ -645,23 +663,28 @@ suite('LayoutManager', function() {
                     { value: '&#x1f310;',
                       uppercaseValue: '&#x1f310;',
                       isSpecialKey: true,
-                      ratio: 1,
                       keyCode: -3,
                       className: 'switch-key' },
                     { value: '&nbsp', ratio: 4, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     { value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
 
-        assert.equal(manager.currentPage.keys[1][2].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 2,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -678,8 +701,6 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: '12&',
-                      uppercaseValue: '12&',
-                      isSpecialKey: true,
                       ratio: 2.0,
                       ariaLabel: 'alternateLayoutKey2',
                       className: 'page-switch-key',
@@ -687,23 +708,28 @@ suite('LayoutManager', function() {
                     { value: 'Sp',
                       uppercaseValue: 'Sp',
                       isSpecialKey: true,
-                      ratio: 1,
                       keyCode: -3,
                       className: 'switch-key alternate-indicator' },
                     { value: '&nbsp', ratio: 4, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     { value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
 
-        assert.equal(manager.currentPage.keys[1][2].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 2,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -720,29 +746,33 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: '12&',
-                      uppercaseValue: '12&',
-                      isSpecialKey: true,
                       ratio: 2.0,
                       ariaLabel: 'alternateLayoutKey2',
                       className: 'page-switch-key',
                       targetPage: 1 },
-                    { value: ',', ratio: 1, keyCode: 44, keyCodeUpper: 44,
-                      lowercaseValue: ',', uppercaseValue: ',',
-                      isSpecialKey: false },
+                    { value: ',' },
                     { value: '&nbsp', ratio: 4, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     { value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
 
-        assert.equal(manager.currentPage.keys[1][2].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 2,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: ','}, false),
+                      'commaKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -758,29 +788,33 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: '12&',
-                      uppercaseValue: '12&',
-                      isSpecialKey: true,
                       ratio: 2.0,
                       ariaLabel: 'alternateLayoutKey2',
                       className: 'page-switch-key',
                       targetPage: 1 },
-                    { value: '/', ratio: 1, keyCode: 47, keyCodeUpper: 47,
-                      lowercaseValue: '/', uppercaseValue: '/',
-                      isSpecialKey: false },
+                    { value: '/' },
                     { value: '&nbsp', ratio: 4, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     { value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
 
-        assert.equal(manager.currentPage.keys[1][2].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 2,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '/'}, false),
+                      'slashKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -796,8 +830,6 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: '12&',
-                      uppercaseValue: '12&',
-                      isSpecialKey: true,
                       ratio: 1.5,
                       ariaLabel: 'alternateLayoutKey2',
                       className: 'page-switch-key',
@@ -805,27 +837,32 @@ suite('LayoutManager', function() {
                     { value: '&#x1f310;',
                       uppercaseValue: '&#x1f310;',
                       isSpecialKey: true,
-                      ratio: 1,
                       keyCode: -3,
                       className: 'switch-key' },
-                    { value: '/', ratio: 1, keyCode: 47, keyCodeUpper: 47,
-                      lowercaseValue: '/', uppercaseValue: '/',
-                      isSpecialKey: false },
+                    { value: '/' },
                     { value: '&nbsp', ratio: 3, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     // The [ENTER] key would be cloned and with modified ratio
                     { value: 'ENTER', ratio: 2.5,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][3],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
 
-        assert.equal(manager.currentPage.keys[1][3].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 1.5,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '/'}, false),
+                      'slashKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -841,29 +878,33 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: '12&',
-                      uppercaseValue: '12&',
-                      isSpecialKey: true,
                       ratio: 2.0,
                       ariaLabel: 'alternateLayoutKey2',
                       className: 'page-switch-key',
                       targetPage: 1 },
-                    { value: '@', ratio: 1, keyCode: 64, keyCodeUpper: 64,
-                      lowercaseValue: '@', uppercaseValue: '@',
-                      isSpecialKey: false },
+                    { value: '@' },
                     { value: '&nbsp', ratio: 4, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     { value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
 
-        assert.equal(manager.currentPage.keys[1][2].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 2,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '@'}, false),
+                      'atKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -879,8 +920,6 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: '12&',
-                      uppercaseValue: '12&',
-                      isSpecialKey: true,
                       ratio: 1.5,
                       ariaLabel: 'alternateLayoutKey2',
                       className: 'page-switch-key',
@@ -888,26 +927,32 @@ suite('LayoutManager', function() {
                     { value: '&#x1f310;',
                       uppercaseValue: '&#x1f310;',
                       isSpecialKey: true,
-                      ratio: 1,
                       keyCode: -3,
                       className: 'switch-key' },
-                    { value: '@', ratio: 1, keyCode: 64, keyCodeUpper: 64,
-                      lowercaseValue: '@', uppercaseValue: '@',
-                      isSpecialKey: false },
+                    { value: '@' },
                     { value: '&nbsp', ratio: 3, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     // The [ENTER] key would be cloned and with modified ratio
                     { value: 'ENTER', ratio: 2.5,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
 
-        assert.equal(manager.currentPage.keys[1][3].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][3],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
+
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 1.5,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '@'}, false),
+                      'atKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -922,22 +967,21 @@ suite('LayoutManager', function() {
           layoutName: 'spaceLayout',
           pageIndex: 0,
           keys: [ [ { value: 'S' } ],
-                  [ { value: '@', ratio: 1, keyCode: 64, keyCodeUpper: 64,
-                      lowercaseValue: '@', uppercaseValue: '@',
-                      isSpecialKey: false },
+                  [ { value: '@' },
                     { value: '&nbsp', ratio: 6, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     { value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
-        assert.equal(manager.currentPage.keys[1][1].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][1],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
+
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '@'}, false),
+                      'atKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -953,8 +997,6 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: '12&',
-                      uppercaseValue: '12&',
-                      isSpecialKey: true,
                       ratio: 2,
                       ariaLabel: 'alternateLayoutKey2',
                       className: 'page-switch-key',
@@ -962,25 +1004,30 @@ suite('LayoutManager', function() {
                     { value: '&#x1f310;',
                       uppercaseValue: '&#x1f310;',
                       isSpecialKey: true,
-                      ratio: 1,
                       keyCode: -3,
                       className: 'switch-key' },
                     { value: '&nbsp', ratio: 4, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     // The [ENTER] key would be cloned
                     // and with modified className
                     { className: 'search-icon', value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
 
-        assert.equal(manager.currentPage.keys[1][2].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 2,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -996,31 +1043,35 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: '12&',
-                      uppercaseValue: '12&',
-                      isSpecialKey: true,
                       ratio: 2.0,
                       ariaLabel: 'alternateLayoutKey2',
                       className: 'page-switch-key',
                       targetPage: 1 },
-                    { value: ',', ratio: 1, keyCode: 44, keyCodeUpper: 44,
-                      lowercaseValue: ',', uppercaseValue: ',',
-                      isSpecialKey: false },
+                    { value: ',' },
                     { value: '&nbsp', ratio: 4, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     // The [ENTER] key would be cloned
                     // and with modified className
                     { className: 'search-icon', value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
 
-        assert.equal(manager.currentPage.keys[1][2].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 2,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: ','}, false),
+                      'commaKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -1039,25 +1090,30 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: '12&',
-                      uppercaseValue: '12&',
-                      isSpecialKey: true,
                       ratio: 2.0,
                       ariaLabel: 'alternateLayoutKey2',
                       className: 'page-switch-key',
                       targetPage: 1 },
                     { value: '&nbsp', ratio: 5, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     { value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
-        assert.equal(manager.currentPage.keys[1][1].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][1],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
+
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 2,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -1076,27 +1132,31 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: '12&',
-                      uppercaseValue: '12&',
-                      isSpecialKey: true,
                       ratio: 2.0,
                       ariaLabel: 'alternateLayoutKey2',
                       className: 'page-switch-key',
                       targetPage: 1 },
                     '!',
                     { value: '&nbsp', ratio: 4, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     { value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
 
-        assert.equal(manager.currentPage.keys[1][2].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 2,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -1115,26 +1175,30 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: '12&',
-                      uppercaseValue: '12&',
-                      isSpecialKey: true,
                       ratio: 2.0,
                       ariaLabel: 'alternateLayoutKey2',
                       className: 'page-switch-key',
                       targetPage: 1 },
-                    { value: ',', ratio: 1, keyCode: 44, keyCodeUpper: 44,
-                      lowercaseValue: ',', uppercaseValue: ',',
-                      isSpecialKey: false },
+                    { value: ',' },
                     { value: '&nbsp', ratio: 5, keyCode: 32 },
                     { value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
 
-        assert.equal(manager.currentPage.keys[1][2].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 2.0,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: ','}, false),
+                      'commaKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -1153,34 +1217,33 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: '12&',
-                      uppercaseValue: '12&',
-                      isSpecialKey: true,
                       ratio: 2.0,
                       ariaLabel: 'alternateLayoutKey2',
                       className: 'page-switch-key',
                       targetPage: 1 },
-                    { value: ',', ratio: 1, keyCode: 44, keyCodeUpper: 44,
-                      lowercaseValue: ',', uppercaseValue: ',',
-                      isSpecialKey: false },
+                    { value: ',' },
                     { value: '&nbsp', ratio: 4, keyCode: 32 },
-                    { value: '.',
-                      ratio: 1,
-                      keyCode: 46,
-                      keyCodeUpper: 46,
-                      lowercaseValue: '.',
-                      uppercaseValue: '.',
-                      isSpecialKey: false,
-                      className: 'alternate-indicator' },
+                    { value: '.' },
                     { value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
 
-        assert.equal(manager.currentPage.keys[1][2].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 2.0,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: ','}, false),
+                      'commaKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, true),
+                      'periodKey was not normalized correctly');
       }, onReject).then(done, done);
     });
 
@@ -1199,27 +1262,76 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: '12&',
-                      uppercaseValue: '12&',
-                      isSpecialKey: true,
                       ratio: 2.0,
                       ariaLabel: 'alternateLayoutKey2',
                       className: 'page-switch-key',
                       targetPage: 1 },
-                    { value: ',', ratio: 1, keyCode: 44, keyCodeUpper: 44,
-                      lowercaseValue: ',', uppercaseValue: ',',
-                      isSpecialKey: false },
+                    { value: ',' },
                     { value: '&nbsp', ratio: 4, keyCode: 32 },
                     '*',
                     { value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
 
-        assert.equal(manager.currentPage.keys[1][2].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 2,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: ','}, false),
+                      'commaKey was not normalized');
+      }, onReject).then(done, done);
+    });
+
+    test('type=text (comma with alternate-indicator)', function(done) {
+      app.getBasicInputType.returns('text');
+      app.supportsSwitching.returns(false);
+      spaceLayout.pages[0].alt = {
+        ',': ', * -'
+      };
+
+      manager.switchCurrentLayout('spaceLayout').then(function() {
+        var expectedPage = {
+          imEngine: 'test-imEngine',
+          layoutName: 'spaceLayout',
+          pageIndex: 0,
+          keys: [ [ { value: 'S' } ],
+                  [ { keyCode: KeyboardEvent.DOM_VK_ALT,
+                      value: '12&',
+                      ratio: 2.0,
+                      ariaLabel: 'alternateLayoutKey2',
+                      className: 'page-switch-key',
+                      targetPage: 1 },
+                    { value: ',' },
+                    { value: '&nbsp', ratio: 4, keyCode: 32 },
+                    { value: '.' },
+                    { value: 'ENTER', ratio: 2.0,
+                      keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
+
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
+
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 2.0,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: ','}, true),
+                      'commaKey was not normalized correctly');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -1236,8 +1348,6 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'S' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: '12&',
-                      uppercaseValue: '12&',
-                      isSpecialKey: true,
                       ratio: 1.5,
                       ariaLabel: 'alternateLayoutKey2',
                       className: 'page-switch-key',
@@ -1245,26 +1355,31 @@ suite('LayoutManager', function() {
                     { value: '&#x1f310;',
                       uppercaseValue: '&#x1f310;',
                       isSpecialKey: true,
-                      ratio: 1,
                       keyCode: -3,
                       className: 'switch-key' },
-                    { value: ',', ratio: 1, keyCode: 44, keyCodeUpper: 44,
-                      lowercaseValue: ',', uppercaseValue: ',',
-                      isSpecialKey: false },
+                    { value: ',' },
                     { value: '&nbsp', ratio: 3, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     {  value: 'ENTER', ratio: 2.5,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          spaceLayout.pages[0], 'proto is set correctly for layout.');
+        Object.setPrototypeOf(expectedPage, spaceLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][3],
+                              spaceLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
 
-        assert.equal(manager.currentPage.keys[1][3].__proto__,
-          spaceLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 1.5,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: ','}, false),
+                      'commaKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -1281,30 +1396,34 @@ suite('LayoutManager', function() {
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: '12&',
                       ratio: 2.0,
-                      uppercaseValue: '12&',
-                      isSpecialKey: true,
                       ariaLabel: 'alternateLayoutKey2',
                       className: 'page-switch-key',
                       targetPage: 1 },
                     { value: '&#x1f310;',
                       uppercaseValue: '&#x1f310;',
                       isSpecialKey: true,
-                      ratio: 1,
                       keyCode: -3,
                       className: 'switch-key' },
                     { value: '&nbsp', ratio: 5, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     { value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          moreKeysLayout.pages[0], 'proto is set correctly for layout.');
-        assert.equal(manager.currentPage.keys[1][2].__proto__,
-          moreKeysLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        Object.setPrototypeOf(expectedPage, moreKeysLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              moreKeysLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
+
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 2,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
 
@@ -1320,8 +1439,6 @@ suite('LayoutManager', function() {
           keys: [ [ { value: 'W' }, { value: 'C' } ],
                   [ { keyCode: KeyboardEvent.DOM_VK_ALT,
                       value: '12&',
-                      uppercaseValue: '12&',
-                      isSpecialKey: true,
                       ratio: 2.0,
                       ariaLabel: 'alternateLayoutKey2',
                       className: 'page-switch-key',
@@ -1329,24 +1446,28 @@ suite('LayoutManager', function() {
                     { value: '&#x1f310;',
                       uppercaseValue: '&#x1f310;',
                       isSpecialKey: true,
-                      ratio: 1,
                       keyCode: -3,
                       className: 'switch-key' },
                     { value: '&nbsp', ratio: 4, keyCode: 32 },
-                    { value: '.', ratio: 1, keyCode: 46, keyCodeUpper: 46,
-                      lowercaseValue: '.', uppercaseValue: '.',
-                      isSpecialKey: false },
+                    { value: '.' },
                     { value: 'ENTER', ratio: 2.0,
                       keyCode: KeyboardEvent.DOM_VK_RETURN } ] ] };
 
-        assertExpectedLayouts(manager.currentPage, expectedPage);
-        assert.equal(manager.currentPage.__proto__,
-          supportsSwitchingLayout.pages[0],
-          'proto is set correctly for layout.');
+        Object.setPrototypeOf(expectedPage, supportsSwitchingLayout.pages[0]);
+        Object.setPrototypeOf(expectedPage.keys[1][2],
+                              supportsSwitchingLayout.pages[0].keys[1][0]);
+        assert.deepEqual(manager.currentPage, expectedPage);
 
-        assert.equal(manager.currentPage.keys[1][2].__proto__,
-          supportsSwitchingLayout.pages[0].keys[1][0],
-          'proto is set correctly for space key.');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({
+          keyCode: KeyboardEvent.DOM_VK_ALT,
+          value: '12&',
+          ratio: 2,
+          className: 'page-switch-key',
+          ariaLabel: 'alternateLayoutKey2',
+          targetPage: 1
+        }, false), 'pageSwitchingKey was not normalized');
+        assert.isTrue(stubNormalizeKey.calledWithExactly({value: '.'}, false),
+                      'periodKey was not normalized');
       }, onReject).then(done, done);
     });
   });

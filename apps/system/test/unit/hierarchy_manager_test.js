@@ -5,7 +5,7 @@
 requireApp('system/test/unit/mock_app_window.js');
 requireApp('system/test/unit/mock_attention_window.js');
 require('/shared/test/unit/mocks/mock_lazy_loader.js');
-requireApp('system/js/system.js');
+requireApp('system/js/service.js');
 requireApp('system/js/base_module.js');
 requireApp('system/js/hierarchy_manager.js');
 
@@ -22,33 +22,45 @@ suite('system/HierarchyManager', function() {
     EVENT_PREFIX: 'attwm',
     isActive: function() {},
     getActiveWindow: function() {},
-    setHierarchy: function() {}
+    setHierarchy: function() {},
+    respondToHierarchyEvent: function() {}
   };
   var fakeAppWindowManager = {
     name: 'AppWindowManager',
     EVENT_PREFIX: 'awm',
     isActive: function() {},
     getActiveWindow: function() {},
-    setHierarchy: function() {}
+    setHierarchy: function() {},
+    respondToHierarchyEvent: function() {}
   };
   var fakeSystemDialogManager = {
     name: 'SystemDialogManager',
     EVENT_PREFIX: 'sdm',
     isActive: function() {},
-    setHierarchy: function() {}
+    setHierarchy: function() {},
+    respondToHierarchyEvent: function() {}
   };
   var fakeRocketbar = {
     name: 'Rocketbar',
     EVENT_PREFIX: 'rb',
     isActive: function() {},
     getActiveWindow: function() {},
-    setHierarchy: function() {}
+    setHierarchy: function() {},
+    respondToHierarchyEvent: function() {}
   };
   var fakeInitLogoHandler = {
     name: 'InitLogoHandler',
     EVENT_PREFIX: 'il',
     isActive: function() {},
-    setHierarchy: function() {}
+    setHierarchy: function() {},
+    respondToHierarchyEvent: function() {}
+  };
+  var fakeTaskManager = {
+    name: 'TaskManager',
+    EVENT_PREFIX: 'tm',
+    isActive: function() {},
+    setHierarchy: function() {},
+    respondToHierarchyEvent: function() {}
   };
 
   setup(function() {
@@ -58,6 +70,19 @@ suite('system/HierarchyManager', function() {
 
   teardown(function() {
     subject.stop();
+  });
+
+  suite('Update top most window', function() {
+    test('should update top most window when window is opened', function() {
+      this.sinon.stub(subject, 'publish');
+      this.sinon.stub(subject, 'getTopMostWindow').returns(new MockAppWindow());
+      window.dispatchEvent(new CustomEvent('windowopened'));
+      assert.isTrue(subject.publish.calledWith('topmostwindowchanged'));
+      var oldTop = subject.getTopMostWindow();
+      subject.getTopMostWindow.returns(oldTop);
+      window.dispatchEvent(new CustomEvent('windowopened'));
+      assert.isTrue(subject.publish.calledOnce);
+    });
   });
 
   suite('Get top most window', function() {
@@ -155,6 +180,7 @@ suite('system/HierarchyManager', function() {
         this.sinon.stub(fakeAppWindowManager, 'setHierarchy');
         this.sinon.stub(fakeAppWindowManager, 'isActive').returns(true);
         this.sinon.stub(fakeSystemDialogManager, 'isActive').returns(true);
+        this.sinon.stub(fakeSystemDialogManager, 'setHierarchy').returns(true);
         subject.registerHierarchy(fakeAppWindowManager);
         subject.registerHierarchy(fakeSystemDialogManager);
         subject.focus(fakeAppWindowManager);
@@ -170,6 +196,18 @@ suite('system/HierarchyManager', function() {
         subject.registerHierarchy(fakeSystemDialogManager);
         subject.focus(fakeSystemDialogManager);
         assert.isTrue(fakeSystemDialogManager.setHierarchy.calledWith(true));
+      });
+
+    test('should not blur lower priority module ' +
+      'when higher priority module is not focused successfully', function() {
+        this.sinon.stub(fakeAppWindowManager, 'setHierarchy');
+        this.sinon.stub(fakeAppWindowManager, 'isActive').returns(true);
+        this.sinon.stub(fakeSystemDialogManager, 'isActive').returns(true);
+        this.sinon.stub(fakeSystemDialogManager, 'setHierarchy').returns(false);
+        subject.registerHierarchy(fakeAppWindowManager);
+        subject.registerHierarchy(fakeSystemDialogManager);
+        subject.focus(fakeAppWindowManager);
+        assert.isFalse(fakeAppWindowManager.setHierarchy.calledOnce);
       });
   });
 
@@ -197,6 +235,115 @@ suite('system/HierarchyManager', function() {
         subject.registerHierarchy(fakeRocketbar);
         assert.equal(subject._ui_list.length, 3);
         assert.isTrue(subject.updateHierarchy.calledThrice);
+      });
+  });
+
+  suite('respondToHierarchyEvent hierarchy events', function() {
+    setup(function() {
+      subject.registerHierarchy(fakeSystemDialogManager);
+      subject.registerHierarchy(fakeRocketbar);
+      subject.registerHierarchy(fakeTaskManager);
+      subject.registerHierarchy(fakeAppWindowManager);
+      subject.registerHierarchy(fakeAttentionWindowManager);
+    });
+
+    teardown(function() {
+      subject.unregisterHierarchy(fakeSystemDialogManager);
+      subject.unregisterHierarchy(fakeRocketbar);
+      subject.unregisterHierarchy(fakeTaskManager);
+      subject.unregisterHierarchy(fakeAppWindowManager);
+      subject.unregisterHierarchy(fakeAttentionWindowManager);
+    });
+
+    test('Should broadcast event from top to bottom until blocked', function() {
+      this.sinon.stub(fakeRocketbar, 'isActive').returns(true);
+      this.sinon.stub(fakeSystemDialogManager, 'isActive').returns(true);
+      this.sinon.stub(fakeAppWindowManager, 'isActive').returns(true);
+      this.sinon.stub(fakeTaskManager, 'isActive').returns(true);
+      this.sinon.stub(fakeAttentionWindowManager, 'isActive').returns(true);
+      this.sinon.stub(fakeRocketbar,
+        'respondToHierarchyEvent').returns(true);
+      this.sinon.stub(fakeSystemDialogManager,
+        'respondToHierarchyEvent').returns(true);
+      this.sinon.stub(fakeAppWindowManager,
+        'respondToHierarchyEvent').returns(false);
+      this.sinon.stub(fakeTaskManager,
+        'respondToHierarchyEvent').returns(true);
+      this.sinon.stub(fakeAttentionWindowManager,
+        'respondToHierarchyEvent').returns(true);
+      var homeEvt = new CustomEvent('home');
+      window.dispatchEvent(homeEvt);
+      assert.isTrue(fakeAttentionWindowManager
+        .respondToHierarchyEvent.calledWith(homeEvt));
+      assert.isTrue(fakeRocketbar
+        .respondToHierarchyEvent.calledWith(homeEvt));
+      assert.isTrue(fakeSystemDialogManager
+        .respondToHierarchyEvent.calledWith(homeEvt));
+      assert.isTrue(fakeAppWindowManager
+        .respondToHierarchyEvent.calledWith(homeEvt));
+      assert.isFalse(fakeTaskManager
+        .respondToHierarchyEvent.calledWith(homeEvt));
+    });
+
+    test('Should skip broadcasting if an module is inactive', function() {
+      this.sinon.stub(fakeRocketbar, 'isActive').returns(true);
+      this.sinon.stub(fakeSystemDialogManager, 'isActive').returns(true);
+      this.sinon.stub(fakeAppWindowManager, 'isActive').returns(false);
+      this.sinon.stub(fakeTaskManager, 'isActive').returns(true);
+      this.sinon.stub(fakeAttentionWindowManager, 'isActive').returns(true);
+      this.sinon.stub(fakeRocketbar,
+        'respondToHierarchyEvent').returns(true);
+      this.sinon.stub(fakeSystemDialogManager,
+        'respondToHierarchyEvent').returns(true);
+      this.sinon.stub(fakeAppWindowManager,
+        'respondToHierarchyEvent').returns(false);
+      this.sinon.stub(fakeTaskManager,
+        'respondToHierarchyEvent').returns(true);
+      this.sinon.stub(fakeAttentionWindowManager,
+        'respondToHierarchyEvent').returns(true);
+      var homeEvt = new CustomEvent('home');
+      window.dispatchEvent(homeEvt);
+      assert.isTrue(fakeAttentionWindowManager
+        .respondToHierarchyEvent.calledWith(homeEvt));
+      assert.isTrue(fakeRocketbar
+        .respondToHierarchyEvent.calledWith(homeEvt));
+      assert.isTrue(fakeSystemDialogManager
+        .respondToHierarchyEvent.calledWith(homeEvt));
+      assert.isFalse(fakeAppWindowManager
+        .respondToHierarchyEvent.calledWith(homeEvt));
+      assert.isTrue(fakeTaskManager
+        .respondToHierarchyEvent.calledWith(homeEvt));
+    });
+
+    test('Deliver to the last person in the list if not catched',
+      function() {
+      this.sinon.stub(fakeRocketbar, 'isActive').returns(false);
+      this.sinon.stub(fakeSystemDialogManager, 'isActive').returns(false);
+      this.sinon.stub(fakeAppWindowManager, 'isActive').returns(false);
+      this.sinon.stub(fakeTaskManager, 'isActive').returns(false);
+      this.sinon.stub(fakeAttentionWindowManager, 'isActive').returns(false);
+      this.sinon.stub(fakeRocketbar,
+        'respondToHierarchyEvent').returns(true);
+      this.sinon.stub(fakeSystemDialogManager,
+        'respondToHierarchyEvent').returns(true);
+      this.sinon.stub(fakeAppWindowManager,
+        'respondToHierarchyEvent').returns(true);
+      this.sinon.stub(fakeTaskManager,
+        'respondToHierarchyEvent').returns(true);
+      this.sinon.stub(fakeAttentionWindowManager,
+        'respondToHierarchyEvent').returns(true);
+      var holdhomeEvt = new CustomEvent('holdhome');
+      window.dispatchEvent(holdhomeEvt);
+      assert.isFalse(fakeAttentionWindowManager
+        .respondToHierarchyEvent.calledWith(holdhomeEvt));
+      assert.isFalse(fakeRocketbar
+        .respondToHierarchyEvent.calledWith(holdhomeEvt));
+      assert.isFalse(fakeSystemDialogManager
+        .respondToHierarchyEvent.calledWith(holdhomeEvt));
+      assert.isFalse(fakeAppWindowManager
+        .respondToHierarchyEvent.calledWith(holdhomeEvt));
+      assert.isTrue(fakeTaskManager
+        .respondToHierarchyEvent.calledWith(holdhomeEvt));
       });
   });
 });

@@ -392,6 +392,82 @@ suite('system/UpdateManager', function() {
           assert.isUndefined(UpdateManager.systemUpdatable.mKnownUpdate);
       });
     });
+
+    suite('device locked', function() {
+      setup(function() {
+        UpdateManager.init();
+      });
+
+      test('should close all dialogs', function() {
+        UpdateManager.showDownloadPrompt();
+        window.dispatchEvent(new CustomEvent('lockscreen-appopened'));
+        assert.isFalse(UpdateManager.downloadDialog.
+          classList.contains('visible'));
+        assert.isFalse(UpdateManager.downloadViaDataConnectionDialog.
+          classList.contains('visible'));
+        assert.isFalse(MockCustomDialog.mShown);
+      });
+
+      var testCases = [
+        {
+          title: 'should dispatchEvent updatepromptshown, showDownloadPrompt',
+          eventType: 'updatepromptshown',
+          method: 'showDownloadPrompt'
+        },
+        {
+          title: 'should dispatchEvent updatepromptshown,' +
+            'showPromptWifiPrioritized',
+          eventType: 'updatepromptshown',
+          method: 'showPromptWifiPrioritized'
+        },
+        {
+          title: 'should dispatchEvent updatepromptshown,' +
+            'showForbiddenDownload',
+          eventType: 'updatepromptshown',
+          method: 'showForbiddenDownload'
+        },
+        {
+          title: 'should dispatchEvent updatepromptshown,' +
+            'showPromptNoConnection',
+          eventType: 'updatepromptshown',
+          method: 'showPromptNoConnection'
+        },
+        {
+          title: 'should dispatchEvent updateprompthidden,' +
+            ' cancelPrompt',
+          eventType: 'updateprompthidden',
+          method: 'cancelPrompt'
+        }
+      ];
+
+      testCases.forEach(function(testCase) {
+        test(testCase.title, function(done) {
+          window.addEventListener(testCase.eventType, function listener(evt) {
+            window.removeEventListener(testCase.eventType, listener);
+            assert.equal(testCase.eventType, evt.type);
+            done();
+          });
+
+          switch (testCase.method) {
+            case 'showDownloadPrompt':
+              UpdateManager.showDownloadPrompt();
+              break;
+            case 'showPromptWifiPrioritized':
+              UpdateManager.showPromptWifiPrioritized();
+              break;
+            case 'showForbiddenDownload':
+              UpdateManager.showForbiddenDownload();
+              break;
+            case 'showPromptNoConnection':
+              UpdateManager.showPromptNoConnection();
+              break;
+            case 'cancelPrompt':
+              UpdateManager.cancelPrompt();
+              break;
+          }
+        });
+      });
+    });
   });
 
   suite('UI', function() {
@@ -1213,6 +1289,18 @@ suite('system/UpdateManager', function() {
     var getDataRoamingSettingSpy;
     var checkUpdate2gEnabled;
     var showPromptNoConnectionSpy;
+    var mockMozWifiManager;
+    var mockMozMobileConnections;
+    var realOnLine;
+    var isOnLine = true;
+
+    function navigatorOnLine() {
+      return isOnLine;
+    }
+
+    function setNavigatorOnLine(value) {
+      isOnLine = value;
+    }
 
     setup(function() {
       this.sinon.useFakeTimers();
@@ -1221,6 +1309,14 @@ suite('system/UpdateManager', function() {
         UpdateManager.downloadDialog.classList.remove('visible');
         return true;
       };
+      mockMozWifiManager = navigator.mozWifiManager;
+      mockMozMobileConnections = navigator.mozMobileConnections;
+      realOnLine = Object.getOwnPropertyDescriptor(navigator, 'onLine');
+      Object.defineProperty(navigator, 'onLine', {
+        configurable: true,
+        get: navigatorOnLine,
+        set: setNavigatorOnLine
+      });
 
       showForbiddenDwnSpy =
         this.sinon.spy(UpdateManager, 'showForbiddenDownload');
@@ -1245,6 +1341,12 @@ suite('system/UpdateManager', function() {
       this.sinon.clock.restore();
       UpdateManager.startDownloads = realStartDownloadsFunc;
       UpdateManager.downloadDialog.dataset.online = true;
+
+      if (realOnLine) {
+        Object.defineProperty(navigator, 'onLine', realOnLine);
+      }
+      navigator.mozWifiManager = mockMozWifiManager;
+      navigator.mozMobileConnections = mockMozMobileConnections;
       navigator.mozWifiManager.connection.status = 'connected';
     });
 
@@ -1507,6 +1609,21 @@ suite('system/UpdateManager', function() {
         wifiPrioritized: false,
         noConnection: true,
         testResult: 'noConnection'
+      },
+      {
+        title: 'B2G/Mulet download, navigator online -> download available',
+        onLine: true,
+        testResult: 'startDownloads'
+      },
+      {
+        title: 'B2G/Mulet download, navigator offline' +
+          '-> download not available',
+        onLine: false,
+        testResult: 'noConnection'
+      },
+      {
+        title: 'Connections undefined -> download not available',
+        testResult: 'noConnection'
       }
     ];
 
@@ -1525,19 +1642,28 @@ suite('system/UpdateManager', function() {
           MockNavigatorSettings.mSettings[UpdateManager.WIFI_PRIORITIZED_KEY] =
             testCase.wifiPrioritized;
         }
+        if (testCase.onLine === undefined) {
+          navigator.mozWifiManager.connection.status =
+            testCase.wifi ? 'connected' : 'disconnected';
+        } else {
+          navigator.mozWifiManager = null;
+          navigator.onLine = testCase.onLine ? true : false;
+        }
         MockNavigatorSettings.mSettings['ril.data.roaming_enabled'] =
           testCase.roaming ? true : false;
-        navigator.mozWifiManager.connection.status =
-          testCase.wifi ? 'connected' : 'disconnected';
 
-        for (var i = 0, iLen = testCase.conns.length;
-             i < iLen && i < MOBILE_CONNECTION_COUNT;
-             i++) {
-          MockNavigatorMozMobileConnections[i].data = {
-            connected: testCase.conns[i].connected,
-            type: testCase.conns[i].type,
-            roaming: (testCase.roaming ? true : false)
-          };
+        if (testCase.conns === undefined) {
+          navigator.mozMobileConnections = null;
+        } else {
+          for (var i = 0, iLen = testCase.conns.length;
+               i < iLen && i < MOBILE_CONNECTION_COUNT;
+               i++) {
+            MockNavigatorMozMobileConnections[i].data = {
+              connected: testCase.conns[i].connected,
+              type: testCase.conns[i].type,
+              roaming: (testCase.roaming ? true : false)
+            };
+          }
         }
 
         if (testCase.noConnection) {

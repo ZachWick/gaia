@@ -1,17 +1,22 @@
-/*global MockL10n, MockNavigatorSettings, MockLanguageList,
-LanguageManager, LanguageList, KeyboardHelper, dispatchEvent*/
+/* global MockL10n, MockNavigatorSettings, MockLanguageList,
+          LanguageManager, LanguageList, KeyboardHelper, 
+          MockImportNavigationHTML, dispatchEvent */
 'use strict';
 
 require('/shared/test/unit/mocks/mock_navigator_moz_settings.js');
 require('/shared/test/unit/mocks/mock_language_list.js');
 require('/shared/test/unit/mocks/mock_l10n.js');
+requireApp('ftu/test/unit/mock_navigation.html.js');
 requireApp('ftu/js/language.js');
 
 suite('languages >', function() {
   var realSettings;
   var realLanguageList;
   var realL10n;
+  var realHTML;
   suiteSetup(function() {
+    realHTML = document.body.innerHTML;
+    document.body.innerHTML = MockImportNavigationHTML;
     // mock l10n
     realL10n = navigator.mozL10n;
     navigator.mozL10n = MockL10n;
@@ -24,6 +29,7 @@ suite('languages >', function() {
   });
 
   suiteTeardown(function() {
+    document.body.innerHTML = realHTML;
     navigator.mozL10n = realL10n;
     navigator.mozSettings = realSettings;
     realSettings = null;
@@ -50,12 +56,18 @@ suite('languages >', function() {
     var list = document.createElement('ul');
     section.appendChild(list);
 
+    // XXX in reality this method is async b/c it uses LanguageList.get;  here
+    // however it uses the mock which is sync.  Fix this in bug 1119865.
     LanguageManager.buildLanguageList();
-    assert.equal(document.querySelectorAll('li').length,
-                 Object.keys(LanguageList._languages).length);
     var selected = document.querySelectorAll('input[type="radio"]:checked');
     assert.equal(selected.length, 1);
     assert.equal(selected[0].value, 'en-US');
+
+    // mock's _languages is sync, too
+    LanguageList._languages.then(function(langs) {
+      assert.equal(document.querySelectorAll('li').length,
+                   Object.keys(langs).length);
+    });
     done();
   });
 

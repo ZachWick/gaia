@@ -106,8 +106,8 @@ var videostorage;
 
 var isInitThumbnail = false;
 
-// If we're doing a pick activity, this variable will be true
-var picking;
+// When we're invoked for an inline pick activity, our URL ends with '#pick'
+var picking = (window.location.hash === '#pick');
 
 // Flag that indicates that we've edited a picture and just saved it
 var justSavedEditedImage = false;
@@ -125,6 +125,7 @@ navigator.mozL10n.once(function showBody() {
   document.body.classList.remove('hidden');
 
   // Tell performance monitors that our chrome is visible
+  window.performance.mark('navigationLoaded');
   window.dispatchEvent(new CustomEvent('moz-chrome-dom-loaded'));
 
   // load frame_script.js for preview mode and show loading background
@@ -175,44 +176,38 @@ function init() {
   window.onresize = resizeHandler;
 
   // Tell performance monitors that our chrome is ready to interact with.
+  window.performance.mark('navigationInteractive');
   window.dispatchEvent(new CustomEvent('moz-chrome-interactive'));
 
-  // If we were not invoked by an activity, then start off in thumbnail
-  // list mode, and fire up the MediaDB object.
-  if (!navigator.mozHasPendingMessage('activity')) {
-    initDB();
+  // Start initializing the MediaDB
+  initDB();
+
+  // If we were invoked for anything other than a pick activity, we
+  // start off in thumbnail list mode. If we were invoked for a pick
+  // activity, then we need to wait until the activity request actually
+  // arrives below.
+  if (!picking) {
     setView(LAYOUT_MODE.list);
   }
 
-  // Register a handler for activities. This will take care of the rest
-  // of the initialization process.
+  // This function handles pick and browse activity requests
   navigator.mozSetMessageHandler('activity', function activityHandler(a) {
     var activityName = a.source.name;
     switch (activityName) {
     case 'browse':
-      // The 'browse' activity is the way we launch Gallery from Camera.
-      // If this was a cold start, then the db needs to be initialized.
-      if (!photodb) {
-        initDB();  // Initialize the media database
+      // The user is probably coming to us from the camera, and she probably
+      // wants to see the list of thumbnails. If the gallery was already
+      // running when the browse activity was started, then we might not be
+      // displaying the thumbnails. If we're currently displaying a single
+      // image, switch to the thumbnails. But if the user left the gallery in
+      // the middle of an edit or in the middle of making a selection, then
+      // returning to the thumbnail list would cause her to lose work, so in
+      // those cases we don't change anything and let the gallery resume where
+      // the user left it.  See Bug 846220.
+      if (currentView === LAYOUT_MODE.fullscreen)
         setView(LAYOUT_MODE.list);
-      }
-      else {
-        // If the gallery was already running we we arrived here via a
-        // browse activity, then the user is probably coming to us from the
-        // camera, and she probably wants to see the list of thumbnails.
-        // If we're currently displaying a single image, switch to the
-        // thumbnails. But if the user left the gallery in the middle of
-        // an edit or in the middle of making a selection, then returning
-        // to the thumbnail list would cause her to lose work, so in those
-        // cases we don't change anything and let the gallery resume where
-        // the user left it.  See Bug 846220.
-        if (currentView === LAYOUT_MODE.fullscreen)
-          setView(LAYOUT_MODE.list);
-      }
       break;
     case 'pick':
-      picking = true;
-      initDB();
       LazyLoader.load('js/pick.js', function() { Pick.start(a); });
       break;
     }
@@ -264,11 +259,10 @@ function initDB() {
     // Switch back to the thumbnail view unless it is a pick activity.
     // If we were viewing or editing an image it might not be there
     // anymore when the MediaDB becomes available again.
-    if (!pendingPick) {
+    if (!picking) {
       setView(LAYOUT_MODE.list);
     } else {
-      setView(LAYOUT_MODE.pick);
-      cleanupCrop();
+      Pick.restart();
     }
 
     // If storage becomes unavailble (e.g. the user starts a USB Mass Storage
@@ -280,13 +274,20 @@ function initDB() {
       Overlay.show('pluggedin');
   };
 
+  photodb.onenumerable = function() {
+    // Start enumerating the db and creating thumbnails as soon as we're ready
+    initThumbnails();
+  };
+
   photodb.onready = function() {
     // Hide the nocard or pluggedin overlay if it is displayed
     if (Overlay.current === 'nocard' || Overlay.current === 'pluggedin' ||
         Overlay.current === 'upgrade')
       Overlay.hide();
 
-    initThumbnails();
+    // We also scan the file system for new files every time we get
+    // a ready event. That code is in a different event handler that is
+    // not registered until initThumbnails() finishes, however.
   };
 
   photodb.onscanstart = function onscanstart() {
@@ -318,6 +319,7 @@ function initDB() {
     // performance monitors that the app is finally fully loaded and stable.
     if (!firstScanDone) {
       firstScanDone = true;
+      window.performance.mark('fullyLoaded');
       window.dispatchEvent(new CustomEvent('moz-app-loaded'));
     }
   };
@@ -468,9 +470,12 @@ function initThumbnails() {
     batch.length = 0;
     if (!firstBatchDisplayed) {
       firstBatchDisplayed = true;
+
       // Tell performance monitors that "above the fold" content is displayed
       // and is ready to interact with.
+      window.performance.mark('visuallyLoaded');
       window.dispatchEvent(new CustomEvent('moz-app-visually-complete'));
+      window.performance.mark('contentInteractive');
       window.dispatchEvent(new CustomEvent('moz-content-interactive'));
     }
   }
@@ -492,11 +497,17 @@ function initThumbnails() {
     // enumerating the database at this point. We won't send the final
     // moz-app-loaded event until we're completely stable and have
     // finished scanning.
+    window.performance.mark('mediaEnumerated');
     PerformanceTestingHelper.dispatch('media-enumerated');
 
     // Now that we've enumerated all the photos and videos we already know
-    // about go start looking for new photos and videos.
-    photodb.scan();
+    // about it is time to go and scan the filesystem for new ones. If the
+    // MediaDB is fully ready, we can scan now.  Either way, we always want
+    // to scan every time we get a new 'ready' event.
+    photodb.addEventListener('ready', function() { photodb.scan(); });
+    if (photodb.state === MediaDB.READY) { // if already ready then scan now
+      photodb.scan();
+    }
   }
 }
 
@@ -660,7 +671,7 @@ function fileCreated(fileinfo) {
 function scrollToShowThumbnail(n) {
   if (!files[n])
     return;
-  var selector = 'li[data-filename="' + files[n].name + '"]';
+  var selector = 'img[data-filename="' + files[n].name + '"]';
   var thumbnail = thumbnails.querySelector(selector);
   if (thumbnail) {
     var screenTop = thumbnails.scrollTop;
@@ -763,8 +774,21 @@ function setView(view) {
 // 3. On tiny/large with listView -> go to fullscreen image
 function thumbnailClickHandler(evt) {
   var target = evt.target;
+  if (!target)
+    return;
+
+  // Bug 1106877 - Handle tap for clicks in gray area of containing
+  // div for thumbnail images smaller than thumbnail container.
+  target = target.classList.contains('thumbnail') ?
+    target.firstElementChild : target;
+
   if (!target || !target.classList.contains('thumbnailImage'))
     return;
+
+  // If the MediaDB is not fully ready yet, then ignore the event
+  if (photodb.state !== MediaDB.READY) {
+    return;
+  }
 
   var index = getFileIndex(target.dataset.filename);
   if (picking && currentView === LAYOUT_MODE.pick && index >= 0) {

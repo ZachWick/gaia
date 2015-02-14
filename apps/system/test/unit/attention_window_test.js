@@ -10,11 +10,10 @@ requireApp('system/test/unit/mock_screen_layout.js');
 requireApp('system/test/unit/mock_layout_manager.js');
 requireApp('system/test/unit/mock_app_chrome.js');
 require('/shared/test/unit/mocks/mock_l10n.js');
-require('/shared/test/unit/mocks/mock_system.js');
 
 var mocksForAttentionWindow = new MocksHelper([
   'OrientationManager', 'Applications', 'SettingsListener',
-  'ManifestHelper', 'LayoutManager', 'ScreenLayout', 'System',
+  'ManifestHelper', 'LayoutManager', 'ScreenLayout', 
   'AppChrome'
 ]).init();
 
@@ -77,6 +76,12 @@ suite('system/AttentionWindow', function() {
     var app;
     setup(function() {
       app = new AppWindow(fakeAppConfig);
+    });
+
+    test('show()', function() {
+      var attention = new AttentionWindow(fakeAttentionConfig, app);
+      attention.show();
+      assert.equal(attention.element.style.width, '');
     });
 
     test('clear the fake notification node when removed.', function() {

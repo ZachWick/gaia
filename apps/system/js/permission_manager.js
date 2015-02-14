@@ -1,4 +1,4 @@
-/* global LazyLoader, System, applications, ManifestHelper*/
+/* global LazyLoader, Service, applications, ManifestHelper*/
 /* global Template*/
 'use strict';
 (function(exports) {
@@ -75,6 +75,7 @@
       window.addEventListener('attentionopening', this);
       window.addEventListener('attentionopened', this);
       window.addEventListener('lockscreen-appopened', this);
+      window.addEventListener('screenchange', this);
 
       /* On home/holdhome pressed, discard permission request.
        * XXX: We should make permission dialog be embededd in appWindow
@@ -140,6 +141,7 @@
       window.removeEventListener('attentionopening', this);
       window.removeEventListener('attentionopened', this);
       window.removeEventListener('lockscreen-appopened', this);
+      window.removeEventListener('screenchange', this);
       window.removeEventListener('home', this.discardPermissionRequest);
       window.removeEventListener('holdhome', this.discardPermissionRequest);
     },
@@ -268,6 +270,11 @@
             this.discardPermissionRequest();
           }
           break;
+        case 'screenchange':
+          if (Service.locked && !detail.screenEnabled) {
+            this.discardPermissionRequest();
+          }
+          break;
       }
     },
 
@@ -311,7 +318,7 @@
         this.cancelRequest(this.fullscreenRequest);
         this.fullscreenRequest = undefined;
       }
-      if (detail.fullscreenorigin !== System.currentApp.origin) {
+      if (detail.fullscreenorigin !== Service.currentApp.origin) {
         var _ = navigator.mozL10n.get;
         // The message to be displayed on the approval UI.
         var message =
@@ -424,8 +431,10 @@
       this.moreInfoLink.removeEventListener('click',
         this.moreInfoHandler);
       this.hideInfoLink.removeEventListener('click',
-        this.moreInfoHandler);
-      this.moreInfo.classList.add('hidden');
+        this.hideInfoHandler);
+      if (!this.hideInfoLink.classList.contains('hidden')) {
+        this.toggleInfo();
+      }
       // XXX: This is telling AppWindowManager to focus the active app.
       // After we are moving into AppWindow, we need to remove that
       // and call this.app.focus() instead.

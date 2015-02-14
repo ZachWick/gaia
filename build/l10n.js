@@ -23,10 +23,23 @@
       DEBUG = true;
     }
 
+    ctx.addEventListener('notfounderror', function(e) {
+      if (e.loc === 'en-US') {
+        throw e;
+      }
+    });
+
+    var error = addBuildMessage.bind(this, 'error');
+    var warn = addBuildMessage.bind(this, 'warn');
+
     if (DEBUG) {
-      ctx.addEventListener('error', addBuildMessage.bind(this, 'error'));
-      ctx.addEventListener('warning', addBuildMessage.bind(this, 'warn'));
+      ctx.addEventListener('fetcherror', error);
+      ctx.addEventListener('manifesterror', warn);
+      ctx.addEventListener('parseerror', warn);
+      ctx.addEventListener('resolveerror', warn);
+      ctx.addEventListener('notfounderror', error);
     }
+
     initResources.call(this);
   };
 
@@ -34,18 +47,15 @@
     /* jshint boss:true */
     var containsFetchableLocale = false;
 
+    var meta = {};
     var nodes = document.head
                         .querySelectorAll('link[rel="localization"],' +
-                                          'link[rel="manifest"],' +
-                                          'meta[name="locales"],' +
-                                          'meta[name="default_locale"]');
+                                          'meta[name="availableLanguages"],' +
+                                          'meta[name="defaultLanguage"]');
 
     for (var i = 0, node; node = nodes[i]; i++) {
       var type = node.getAttribute('rel') || node.nodeName.toLowerCase();
       switch (type) {
-        case 'manifest':
-          L10n.onManifestInjected.call(this, node.getAttribute('href'));
-          break;
         case 'localization':
           if (!('noFetch' in node.dataset)) {
             containsFetchableLocale = true;
@@ -53,7 +63,7 @@
           this.ctx.resLinks.push(node.getAttribute('href'));
           break;
         case 'meta':
-          L10n.onMetaInjected.call(this, node);
+          L10n.onMetaInjected.call(this, node, meta);
           break;
       }
     }
@@ -61,6 +71,11 @@
     if (!containsFetchableLocale) {
       document.documentElement.dataset.noCompleteBug = true;
     }
+
+    var availableLangs = meta.availableLanguages ?
+      Object.keys(meta.availableLanguages) : null;
+
+    this.ctx.registerLocales(meta.defaultLanguage, availableLangs);
   }
 
 
@@ -85,6 +100,8 @@
       throw new L10n.Error('Context not ready');
     }
 
+    var sourceEntity = this.getLocale('en-US').astById[id];
+
     var cur = 0;
     var loc;
     var locale;
@@ -96,11 +113,17 @@
       }
 
       if (locale.astById && id in locale.astById) {
-        return locale.astById[id];
+        var entity = locale.astById[id];
+        if (loc === 'en-US' || areEntityStructsEqual(sourceEntity, entity)) {
+          return entity;
+        } else {
+          return sourceEntity;
+        }
       }
 
-      var e = new L10n.Error(id + ' not found in ' + loc, id, loc);
-      this._emitter.emit('warning', e);
+      this._emitter.emit('notfounderror', new L10n.Error(
+        '"' + id + '"' + ' not found in ' + loc + ' in' + this.id,
+        id, loc));
       cur++;
     }
     return '';
@@ -155,6 +178,23 @@
         buildMessages[type] = [];
       }
     }
+  }
+
+  function areEntityStructsEqual(entity1, entity2) {
+    var keys1 = Object.keys(entity1);
+    var keys2 = Object.keys(entity2);
+
+    if (keys1.length !== keys2.length) {
+      return false;
+    }
+
+    for (var i = 0; i < keys1.length; i++) {
+      if (keys2.indexOf(keys1[i]) === -1) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
 })(this);

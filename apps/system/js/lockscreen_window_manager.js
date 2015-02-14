@@ -1,7 +1,7 @@
 /* -*- Mode: js; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- /
 /* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
 'use strict';
-/* global System, LockScreenWindow, LockScreenInputWindow */
+/* global Service, LockScreenWindow, LockScreenInputWindow */
 /* global secureWindowManager */
 
 (function(exports) {
@@ -59,11 +59,11 @@
                 'lockscreen-appterminated',
                 'lockscreen-appclose',
                 'screenchange',
+                'system-resize',
                 'ftuopen',
                 'ftudone',
                 'overlaystart',
                 'showlockscreenwindow',
-                'home',
                 'secure-appclosed',
                 'lockscreen-request-inputpad-open',
                 'lockscreen-request-inputpad-close'
@@ -90,9 +90,36 @@
     this.startObserveSettings();
     this.initElements();
     this.initWindow();
-    System.register('unlock', this);
-    System.register('lock', this);
-    System.request('registerHierarchy', this);
+    Service.register('unlock', this);
+    Service.register('lock', this);
+    Service.request('registerHierarchy', this);
+  };
+
+  LockScreenWindowManager.prototype._handle_home = function() {
+    if (this.isActive()) {
+      // XXX: I don't want to change the order of event registration
+      // at this early-refactoring stage, so do this to minimize the
+      // risk and complete the work.
+      window.dispatchEvent(
+        new CustomEvent('lockscreen-notify-homepressed'));
+      return false;
+    }
+    return true;
+  };
+
+  LockScreenWindowManager.prototype._handle_holdhome = function() {
+    if (this.isActive()) {
+      return false;
+    }
+    return true;
+  };
+
+  LockScreenWindowManager.prototype.respondToHierarchyEvent = function(evt) {
+    if (this['_handle_' + evt.type]) {
+      return this['_handle_' + evt.type](evt);
+    } else {
+      return true;
+    }
   };
 
   /**
@@ -143,6 +170,11 @@
         case 'secure-appclosed':
           this.states.instance.lockOrientation();
           break;
+        case 'system-resize':
+          if (this.states.instance && this.states.instance.isActive()) {
+            this.states.instance.resize();
+          }
+          break;
         case 'screenchange':
           // The screenchange may be invoked by proximity sensor,
           // or the power button. If it's caused by the proximity sensor,
@@ -162,18 +194,6 @@
               // quickly, so we need to keep this workaround.
               this.states.instance.lockOrientation();
             }
-          }
-          break;
-        case 'home':
-          // We assume that this component is started before AppWindowManager
-          // to make this blocking code works.
-          if (this.isActive()) {
-            // XXX: I don't want to change the order of event registration
-            // at this early-refactoring stage, so do this to minimize the
-            // risk and complete the work.
-            window.dispatchEvent(
-              new CustomEvent('lockscreen-notify-homepressed'));
-            evt.stopImmediatePropagation();
           }
           break;
         case 'lockscreen-request-inputpad-open':
@@ -399,7 +419,7 @@
     function lwm_unlock(detail) {
       // XXX: 
       // There is a self-routing here:
-      // System.request('unlock') ->
+      // Service.request('unlock') ->
       // LockscreenWindowManager#unlock ->
       // ['lockscreen-request-unlock'] ->
       // LockscreenWindowManager#responseUnlock |

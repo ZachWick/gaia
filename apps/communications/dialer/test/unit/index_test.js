@@ -5,7 +5,7 @@
 require('/shared/test/unit/mocks/dialer/mock_keypad.js');
 require('/shared/test/unit/mocks/mock_lazy_loader.js');
 require('/shared/test/unit/mocks/mock_lazy_l10n.js');
-
+require('/shared/js/usertiming.js');
 require('/dialer/test/unit/mock_call_handler.js');
 require('/dialer/test/unit/mock_navbar_manager.js');
 
@@ -41,12 +41,6 @@ suite('index.js', function() {
 
     teardown(function() {
       navigator.mozAudioChannelManager = realMozAudioChannelManager;
-    });
-
-    test('the default volume control is set to the "content" channel',
-    function() {
-      assert.equal(navigator.mozAudioChannelManager.volumeControlChannel,
-                   'content');
     });
 
     test('the KeypadManager is setup for use outside of a call',

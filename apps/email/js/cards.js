@@ -574,7 +574,14 @@ var cards = {
       numCards = this._cardStack.length - firstIndex;
     }
 
-    if (showMethod !== 'none') {
+    if (showMethod === 'none') {
+      // If a 'none' remove, and the remove is for a DOM node that used
+      // anim-overlay, which would have increased the _zIndex when added, adjust
+      // the zIndex appropriately.
+      if (cardDomNode && cardDomNode.classList.contains('anim-overlay')) {
+        this._zIndex -= 10;
+      }
+    } else {
       var nextCardIndex = -1;
       if (nextCardSpec) {
         nextCardIndex = this._findCard(nextCardSpec);
@@ -616,6 +623,9 @@ var cards = {
           break;
       }
     }
+
+    // Reset aria-hidden attributes to handle cards visibility.
+    this._setScreenReaderVisibility();
   },
 
   /**
@@ -761,6 +771,17 @@ var cards = {
     toaster.hide();
 
     this.activeCardIndex = cardIndex;
+
+    // Reset aria-hidden attributes to handle cards visibility.
+    this._setScreenReaderVisibility();
+  },
+
+  _setScreenReaderVisibility: function() {
+    // We use aria-hidden to handle visibility instead of CSS because there are
+    // semi-transparent cards, such as folder picker.
+    this._cardStack.forEach(function(card, index) {
+      card.setAttribute('aria-hidden', index !== this.activeCardIndex);
+    }, this);
   },
 
   _onTransitionEnd: function(event) {
@@ -855,11 +876,14 @@ var cards = {
       if (startupCacheEventsSent) {
         // Cache already loaded, so at this point the content shown is wired
         // to event handlers.
+        window.performance.mark('contentInteractive');
         window.dispatchEvent(new CustomEvent('moz-content-interactive'));
       } else {
         // Cache was not used, so only now is the chrome dom loaded.
+        window.performance.mark('navigationLoaded');
         window.dispatchEvent(new CustomEvent('moz-chrome-dom-loaded'));
       }
+      window.performance.mark('navigationInteractive');
       window.dispatchEvent(new CustomEvent('moz-chrome-interactive'));
 
       // If a card that has a simple static content DOM, content is complete.

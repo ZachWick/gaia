@@ -1,5 +1,4 @@
-/* global KeyboardManager, System,
-          AppWindowManager */
+/* global KeyboardManager, Service */
 'use strict';
 
 (function(exports) {
@@ -22,7 +21,7 @@
    *
    * @class LayoutManager
    * @requires KeyboardManager
-   * @requires System
+   * @requires Service
    */
   var LayoutManager = function LayoutManager() {};
 
@@ -46,8 +45,6 @@
      * @memberOf LayoutManager
      */
     get height() {
-      var activeApp = AppWindowManager.getActiveApp();
-      var isFullScreenLayout = activeApp && activeApp.isFullScreenLayout();
       var keyboardHeight = this.keyboardEnabled ?
         KeyboardManager.getHeight() : 0;
       var height = window.innerHeight - keyboardHeight;
@@ -143,7 +140,7 @@
     debug: function lm_debug() {
       if (this.DEBUG) {
         console.log('[' + this.CLASS_NAME + ']' +
-          '[' + System.currentTime() + '] ' +
+          '[' + Service.currentTime() + '] ' +
           Array.slice(arguments).concat());
       }
     }

@@ -88,6 +88,8 @@
 
   ActivityWindow.prototype = Object.create(AppWindow.prototype);
 
+  ActivityWindow.prototype.constructor = ActivityWindow;
+
   ActivityWindow.prototype.eventPrefix = 'activity';
 
   ActivityWindow.prototype.CLASS_NAME = 'ActivityWindow';
@@ -113,10 +115,10 @@
       return this._fullscreen;
     }
 
-    this._fullscreen = this.rearWindow ?
-                       this.rearWindow.isFullScreen() :
-                       this.manifest ?
+    this._fullscreen = (this.manifest && !!this.manifest.fullscreen) ?
                        !!this.manifest.fullscreen :
+                       this.rearWindow ?
+                       this.rearWindow.isFullScreen() :
                        false;
     return this._fullscreen;
   };
@@ -164,18 +166,13 @@
   ActivityWindow.prototype.view = function acw_view() {
     this.instanceID = this.CLASS_NAME + '_' + _id;
     _id++;
-    return '<div class="appWindow activityWindow inline-activity' +
-            '" id="' + this.instanceID + '">' +
-            '<div class="titlebar">' +
-            ' <div class="notifications-shadow"></div>' +
-            ' <div class="statusbar-shadow titlebar-maximized"></div>' +
-            ' <div class="statusbar-shadow titlebar-minimized"></div>' +
-            '</div>' +
-            '<div class="fade-overlay"></div>' +
-            '<div class="browser-container">' +
-            ' <div class="screenshot-overlay"></div>' +
-            '</div>' +
-            '</div>';
+    return `<div id="${this.instanceID}"
+            class="appWindow activityWindow inline-activity">
+            <div class="fade-overlay"></div>
+            <div class="browser-container">
+             <div class="screenshot-overlay"></div>
+            </div>
+            </div>`;
   };
 
   ActivityWindow.SUB_COMPONENTS = {
@@ -184,13 +181,11 @@
     'valueSelector': window.ValueSelector,
     'authDialog': window.AppAuthenticationDialog,
     'contextmenu': window.BrowserContextMenu,
-    'childWindowFactory': window.ChildWindowFactory
+    'childWindowFactory': window.ChildWindowFactory,
+    'statusbar': window.AppStatusbar
   };
 
-  ActivityWindow.REGISTERED_EVENTS =
-    ['mozbrowserclose', 'mozbrowsererror', 'mozbrowservisibilitychange',
-      'mozbrowserloadend', 'mozbrowseractivitydone', 'mozbrowserloadstart',
-      '_localized'];
+  ActivityWindow.REGISTERED_EVENTS = AppWindow.REGISTERED_EVENTS;
 
   ActivityWindow.prototype._handle_mozbrowseractivitydone =
     function aw__handle_mozbrowseractivitydone() {

@@ -14,8 +14,8 @@
   limitations under the License.
 */
 
-/*global Clock, SettingsListener, TouchForwarder, FtuLauncher, MobileOperator,
-         SIMSlotManager, System, Bluetooth, UtilityTray, nfcManager,
+/*global Clock, SettingsListener, FtuLauncher, MobileOperator,
+         SIMSlotManager, Service, Bluetooth, UtilityTray,
          layoutManager */
 
 'use strict';
@@ -139,8 +139,11 @@ var StatusBar = {
    * it triggers the icon "systemDownloads"
    */
   systemDownloadsCount: 0,
+  systemDownloads: {},
 
   _minimizedStatusBarWidth: window.innerWidth,
+
+  _pausedForGesture: false,
 
   /**
    * Object used for handling the clock UI element, wraps all related timers
@@ -150,8 +153,8 @@ var StatusBar = {
   /* For other modules to acquire */
   get height() {
     if (document.mozFullScreen ||
-               (System.currentApp &&
-                System.currentApp.isFullScreen())) {
+               (Service.currentApp &&
+                Service.currentApp.isFullScreen())) {
       return 0;
     } else {
       return this._cacheHeight ||
@@ -173,6 +176,8 @@ var StatusBar = {
     window.addEventListener('apptitlestatechanged', this);
     window.addEventListener('activitytitlestatechanged', this);
     window.addEventListener('appchromecollapsed', this);
+    window.addEventListener('appchromeexpanded', this);
+    window.addEventListener('emergencycallbackstatechanged', this);
   },
 
   addSettingsListener: function sb_addSettingsListener(settingKey) {
@@ -248,6 +253,8 @@ var StatusBar = {
     window.addEventListener('utilitytraywillhide', this);
     window.addEventListener('utility-tray-overlayopened', this);
     window.addEventListener('utility-tray-overlayclosed', this);
+    window.addEventListener('utility-tray-abortopen', this);
+    window.addEventListener('utility-tray-abortclose', this);
     window.addEventListener('cardviewshown', this);
     window.addEventListener('cardviewclosed', this);
 
@@ -270,11 +277,8 @@ var StatusBar = {
     // Listen to Custom event send by 'nfc_manager.js'
     window.addEventListener('nfc-state-changed', this);
 
-    // 'bluetoothconnectionchange' fires when the overall bluetooth connection
-    //  changes.
     // 'bluetoothprofileconnectionchange' fires when a bluetooth connection of
     //  a specific profile changes.
-    window.addEventListener('bluetoothconnectionchange', this);
     window.addEventListener('bluetoothprofileconnectionchange', this);
 
     // Listen to 'moztimechange'
@@ -289,9 +293,6 @@ var StatusBar = {
     window.addEventListener('lockscreen-appclosing', this);
     window.addEventListener('lockpanelchange', this);
 
-    window.addEventListener('simpinshow', this);
-    window.addEventListener('simpinclose', this);
-
     // Listen to orientation change and SHB activation/deactivation.
     window.addEventListener('system-resize', this);
 
@@ -299,9 +300,20 @@ var StatusBar = {
     window.addEventListener('appopened', this);
     window.addEventListener('activityopened', this);
     window.addEventListener('activityterminated', this);
+    window.addEventListener('activitydestroyed', this);
     window.addEventListener('homescreenopening', this);
     window.addEventListener('homescreenopened', this);
     window.addEventListener('stackchanged', this);
+
+    // Listen to updates dialog
+    window.addEventListener('updatepromptshown', this);
+    window.addEventListener('updateprompthidden', this);
+
+    // Track Downloads via the Downloads API.
+    var mozDownloadManager = navigator.mozDownloadManager;
+    if (mozDownloadManager) {
+      mozDownloadManager.addEventListener('downloadstart', this);
+    }
 
     // We need to preventDefault on mouse events until
     // https://bugzilla.mozilla.org/show_bug.cgi?id=1005815 lands
@@ -321,6 +333,10 @@ var StatusBar = {
 
   handleEvent: function sb_handleEvent(evt) {
     switch (evt.type) {
+      case 'emergencycallbackstatechanged':
+        this.updateEmergencyCbNotification(evt.detail);
+        break;
+
       case 'screenchange':
         this.setActive(evt.detail.screenEnabled);
         break;
@@ -333,20 +349,22 @@ var StatusBar = {
         // or we have some bugs.
         this.toggleTimeLabel(false);
         this._updateIconVisibility();
-        this.setAppearance(evt.detail);
         this._inLockScreenMode = true;
+        this.setAppearance();
         break;
 
       case 'lockscreen-appclosing':
         // Display the clock in the statusbar when screen is unlocked
-        this._inLockScreenMode = false;
         this.toggleTimeLabel(true);
         this._updateIconVisibility();
-        this.setAppearance(System.currentApp);
+        this._inLockScreenMode = false;
+        this.setAppearance(Service.currentApp);
         break;
 
       case 'attentionopened':
         this.toggleTimeLabel(true);
+        this.element.classList.add('maximized');
+        this.element.classList.remove('light');
         break;
 
       case 'attentionclosed':
@@ -356,7 +374,10 @@ var StatusBar = {
 
       case 'sheets-gesture-begin':
         this.element.classList.add('hidden');
-        this.pauseUpdate();
+        if (!this._pausedForGesture) {
+          this.pauseUpdate();
+          this._pausedForGesture = true;
+        }
         break;
 
       case 'utilitytraywillshow':
@@ -367,6 +388,8 @@ var StatusBar = {
 
       case 'utility-tray-overlayopened':
       case 'utility-tray-overlayclosed':
+      case 'utility-tray-abortopen':
+      case 'utility-tray-abortclose':
       case 'cardviewclosed':
         this.resumeUpdate();
         break;
@@ -374,7 +397,7 @@ var StatusBar = {
       case 'lockpanelchange':
         if (this.screen.classList.contains('locked')) {
           // Display the clock in the statusbar if on Emergency Call screen
-          var isHidden = (evt.detail.panel == 'emergency-call') ? false : true;
+          var isHidden = (evt.detail.panel !== 'emergency-call');
           this.toggleTimeLabel(!isHidden);
         }
         break;
@@ -411,10 +434,6 @@ var StatusBar = {
 
       case 'datachange':
         this.update.data.call(this);
-        break;
-
-      case 'bluetoothconnectionchange':
-        this.update.bluetooth.call(this);
         break;
 
       case 'bluetoothprofileconnectionchange':
@@ -537,19 +556,28 @@ var StatusBar = {
 
       case 'sheets-gesture-end':
         this.element.classList.remove('hidden');
+        this._pausedForGesture = false;
         this.resumeUpdate();
         break;
 
       case 'stackchanged':
-        this.setAppearance(System.currentApp);
+        this.setAppearance(Service.currentApp);
         this.element.classList.remove('hidden');
         break;
 
       case 'appchromecollapsed':
+        this.setAppearance(evt.detail);
         this._updateMinimizedStatusBarWidth();
         break;
 
       case 'appopened':
+      case 'appchromeexpanded':
+        if (evt.type === 'appopened') {
+          this.element.classList.toggle('fullscreen',
+            evt.detail.isFullScreen());
+          this.element.classList.toggle('fullscreen-layout',
+            evt.detail.isFullScreenLayout());
+        }
         this.setAppearance(evt.detail);
         this.element.classList.remove('hidden');
         this._updateMinimizedStatusBarWidth();
@@ -560,9 +588,24 @@ var StatusBar = {
         /* falls through */
       case 'apptitlestatechanged':
       case 'activitytitlestatechanged':
-      case 'homescreenopened':
         this.setAppearance(evt.detail);
+        if (!this.isPaused()) {
+          this.element.classList.remove('hidden');
+        }
+        break;
+      case 'homescreenopened':
+        // In some cases, if the user has been switching apps so fast and
+        // quickly he press the home button, we might miss the
+        // |sheets-gesture-end| event so we must resume the statusbar
+        // if needed
+        this.setAppearance(evt.detail);
+        if (this._pausedForGesture) {
+          this.resumeUpdate();
+          this._pausedForGesture = false;
+        }
         this.element.classList.remove('hidden');
+        this.element.classList.remove('fullscreen');
+        this.element.classList.remove('fullscreen-layout');
         break;
       case 'activityterminated':
         // In this particular case, we want to restore the original color of
@@ -570,13 +613,66 @@ var StatusBar = {
         this.setAppearance(evt.detail, true);
         this.element.classList.remove('hidden');
         break;
+      case 'activitydestroyed':
+        this._updateMinimizedStatusBarWidth();
+        break;
+      case 'downloadstart':
+        // New download, track it so we can show or hide the active downloads
+        // indicator. If you think this logic needs to change, think really hard
+        // about it and then come and ask @nullaus
+        this.addSystemDownloadListeners(evt.download);
+        break;
+       case 'updatepromptshown':
+          this.element.classList.remove('light');
+          break;
+        case 'updateprompthidden':
+          this.setAppearance(Service.currentApp);
+          break;
     }
   },
 
+  addSystemDownloadListeners: function(download) {
+    var handler = function handleDownloadStateChange(downloadEvent) {
+      var download = downloadEvent.download;
+      switch(download.state) {
+        case 'downloading':
+          // If this download has not already been tracked as actively
+          // downloading we'll add it to our list and increment the
+          // downloads counter.
+          if (!this.systemDownloads[download.id]) {
+            this.incSystemDownloads();
+            this.systemDownloads[download.id] = true;
+          }
+          break;
+        // Once the download is finalized, and only then, is it safe to
+        // remove our state change listener. If we remove it before then
+        // we are likely to miss paused or errored downloads being restarted
+        case 'finalized':
+          download.removeEventListener('statechange', handler);
+          break;
+        // All other state changes indicate the download is no longer
+        // active, if we were previously tracking the download as active
+        // we'll decrement the counter now and remove it from active
+        // download status.
+        case 'stopped':
+        case 'succeeded':
+          if (this.systemDownloads[download.id]) {
+            this.decSystemDownloads();
+            delete this.systemDownloads[download.id];
+          }
+          break;
+        default:
+          console.warn('Unexpected download state = ', download.state);
+      }
+    }.bind(this);
+
+    download.addEventListener('statechange', handler);
+  },
+
   setAppearance: function(app, useBottomWindow) {
-    // Avoid any attempt to update the statusbar when
-    // the phone is locked
+    // The statusbar is always maximised when the phone is locked.
     if (this._inLockScreenMode) {
+      this.element.classList.add('maximized');
       return;
     }
 
@@ -596,14 +692,6 @@ var StatusBar = {
     );
   },
 
-  _startX: null,
-  _startY: null,
-  _releaseTimeout: null,
-  _touchStart: null,
-  _touchForwarder: new TouchForwarder(),
-  _shouldForwardTap: false,
-  _dontStopEvent: false,
-
   _getMaximizedStatusBarWidth: function sb_getMaximizedStatusBarWidth() {
     // Let's consider the style of the status bar:
     // * padding: 0 0.3rem;
@@ -611,13 +699,21 @@ var StatusBar = {
   },
 
   _updateMinimizedStatusBarWidth: function sb_updateMinimizedStatusBarWidth() {
-    var app = System.currentApp;
+    var app = Service.currentApp;
     app = app && app.getTopMostWindow();
+    var appChrome = app && app.appChrome;
+
+    // Only calculate the search input width when the chrome is minimized
+    // Bug 1118025 for more info
+    if (appChrome && appChrome.isMaximized()) {
+      this._updateIconVisibility();
+      return;
+    }
 
     // Get the actual width of the rocketbar, and determine the remaining
     // width for the minimized statusbar.
-    var element = app && app.appChrome && app.appChrome.element &&
-      app.appChrome.element.querySelector('.urlbar .title');
+    var element = appChrome && appChrome.element &&
+      appChrome.element.querySelector('.urlbar .title');
 
     if (element) {
       this._minimizedStatusBarWidth = Math.round(
@@ -724,10 +820,6 @@ var StatusBar = {
   },
 
   panelHandler: function sb_panelHandler(evt) {
-    var app = System.currentApp.getTopMostWindow();
-    var chromeBar = app.element.querySelector('.chrome');
-    var titleBar = app.element.querySelector('.titlebar');
-
     // Do not forward events if FTU is running
     if (FtuLauncher.isFtuRunning()) {
       return;
@@ -738,142 +830,8 @@ var StatusBar = {
       return;
     }
 
-    if (this._dontStopEvent) {
-      return;
-    }
-
-    // If the app is not a fullscreen app, let utility_tray.js handle
-    // this instead.
-    if (!document.mozFullScreen && !app.isFullScreen()) {
-      return;
-    }
-
-    evt.stopImmediatePropagation();
-    evt.preventDefault();
-
-    var touch;
-    switch (evt.type) {
-      case 'touchstart':
-        clearTimeout(this._releaseTimeout);
-
-        var iframe = app.iframe;
-        this._touchForwarder.destination = iframe;
-        this._touchStart = evt;
-        this._shouldForwardTap = true;
-
-
-        touch = evt.changedTouches[0];
-        this._startX = touch.clientX;
-        this._startY = touch.clientY;
-
-        chromeBar.style.transition = 'transform';
-        titleBar.style.transition = 'transform';
-        break;
-
-      case 'touchmove':
-        touch = evt.touches[0];
-        var height = this._cacheHeight;
-        var deltaX = touch.clientX - this._startX;
-        var deltaY = touch.clientY - this._startY;
-
-        if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
-          this._shouldForwardTap = false;
-        }
-
-        var translate = Math.min(deltaY, height);
-        var heightThreshold = height;
-
-        if (app && app.isFullScreen() && app.config.chrome &&
-          app.config.chrome.navigation) {
-          translate = Math.min(deltaY, app.appChrome.height);
-          heightThreshold = app.appChrome.height;
-
-          titleBar.style.transform = 'translateY(calc(' +
-            (translate - app.appChrome.height) + 'px)';
-        } else {
-          titleBar.style.transform =
-            'translateY(calc(' + translate + 'px - 100%)';
-        }
-        chromeBar.style.transform =
-          'translateY(calc(' + translate + 'px - 100%)';
-
-        if (translate >= heightThreshold) {
-          if (this._touchStart) {
-            this._touchForwarder.forward(this._touchStart);
-            this._touchStart = null;
-          }
-          this._touchForwarder.forward(evt);
-        }
-        break;
-
-      case 'touchend':
-        clearTimeout(this._releaseTimeout);
-
-        if (this._touchStart) {
-          if (this._shouldForwardTap) {
-            this._touchForwarder.forward(this._touchStart);
-            this._touchForwarder.forward(evt);
-            this._touchStart = null;
-          }
-          this._releaseBar(titleBar);
-        } else {
-          // If we already forwarded the touchstart it means the bar
-          // if fully open, releasing after a timeout.
-          this._dontStopEvent = true;
-          this._touchForwarder.forward(evt);
-          this._releaseAfterTimeout(titleBar);
-        }
-
-        break;
-    }
-  },
-
-  _releaseBar: function sb_releaseBar(titleBar) {
-    this._dontStopEvent = false;
-    var chromeBar = titleBar.parentNode.querySelector('.chrome');
-
-    chromeBar.classList.remove('dragged');
-    chromeBar.style.transform = '';
-    chromeBar.style.transition = '';
-
-    titleBar.classList.remove('dragged');
-    titleBar.style.transform = '';
-    titleBar.style.transition = '';
-
-    this.screen.classList.remove('minimized-tray');
-
-    clearTimeout(this._releaseTimeout);
-    this._releaseTimeout = null;
-  },
-
-  _releaseAfterTimeout: function sb_releaseAfterTimeout(titleBar) {
-    this.screen.classList.add('minimized-tray');
-
-    var chromeBar = titleBar.parentNode.querySelector('.chrome');
-
-    var self = this;
-    titleBar.style.transform = '';
-    titleBar.style.transition = '';
-    titleBar.classList.add('dragged');
-
-    chromeBar.style.transform = '';
-    chromeBar.style.transition = '';
-    chromeBar.classList.add('dragged');
-
-    self._releaseTimeout = setTimeout(function() {
-      self._releaseBar(titleBar);
-      window.removeEventListener('touchstart', closeOnTap);
-    }, 5000);
-
-    function closeOnTap(evt) {
-      if (evt.target != self._touchForwarder.destination) {
-        return;
-      }
-
-      window.removeEventListener('touchstart', closeOnTap);
-      self._releaseBar(titleBar);
-    }
-    window.addEventListener('touchstart', closeOnTap);
+    var app = Service.query('getTopMostWindow');
+    app && app.handleStatusbarTouch(evt, this._cacheHeight);
   },
 
   /**
@@ -907,7 +865,7 @@ var StatusBar = {
     this.setActiveBattery(active);
 
     if (active) {
-      this.setActiveNfc(nfcManager.isActive());
+      this.setActiveNfc(Service.query('NfcManager.isActive'));
 
       this.addConnectionsListeners();
 
@@ -961,7 +919,7 @@ var StatusBar = {
     if (active) {
       var wifiManager = window.navigator.mozWifiManager;
       if (wifiManager) {
-        wifiManager.connectionInfoUpdate = this.update.wifi.bind(this);
+        wifiManager.onconnectioninfoupdate = this.update.wifi.bind(this);
       }
 
       this.update.wifi.call(this);
@@ -1073,15 +1031,23 @@ var StatusBar = {
       }
 
       var icon = this.icons.battery;
+      var previousLevel = parseInt(icon.dataset.level, 10);
+      var previousCharging = icon.dataset.charging === 'true';
 
       icon.dataset.charging = battery.charging;
       var level = Math.floor(battery.level * 10) * 10;
-      icon.dataset.level = level;
-      navigator.mozL10n.setAttributes(
-        icon,
-        battery.charging ? 'statusbarBatteryCharging' : 'statusbarBattery',
-        { level: level }
-      );
+
+      if (previousLevel !== level || previousCharging !== battery.charging) {
+        icon.dataset.level = level;
+        navigator.mozL10n.setAttributes(
+          icon,
+          battery.charging ? 'statusbarBatteryCharging' : 'statusbarBattery',
+          {level: level}
+        );
+        this.previousCharging = battery.charging;
+
+        this.cloneStatusbar();
+      }
     },
 
     networkActivity: function sb_updateNetworkActivity() {
@@ -1135,6 +1101,7 @@ var StatusBar = {
         }
 
         var previousHiddenState = icon.hidden;
+        var previousActiveState = icon.dataset.inactive;
         var previousRoamingHiddenState = roaming.hidden;
 
         if (this.settingValues['ril.radio.disabled']) {
@@ -1191,6 +1158,7 @@ var StatusBar = {
         }
 
         if (previousHiddenState !== icon.hidden ||
+          previousActiveState !== icon.dataset.inactive ||
           previousRoamingHiddenState !== roaming.hidden) {
           isDirty = true;
         }
@@ -1311,8 +1279,8 @@ var StatusBar = {
           if (icon.dataset.connecting) {
             delete icon.dataset.connecting;
           }
-          var level = Math.floor(
-            wifiManager.connectionInformation.relSignalStrength / 25);
+          var level = Math.min(Math.floor(
+            wifiManager.connectionInformation.relSignalStrength / 20), 4);
           icon.dataset.level = level;
           icon.setAttribute('aria-label', navigator.mozL10n.get(
             'statusbarWiFiConnected', {level: level}));
@@ -1777,7 +1745,7 @@ var StatusBar = {
 
   // To reduce the duplicated code
   isLocked: function() {
-    return System.locked;
+    return Service.locked;
   },
 
   toCamelCase: function sb_toCamelCase(str) {

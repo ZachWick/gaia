@@ -123,6 +123,7 @@ suite('system/InputWindow', function() {
       setup(function(){
         app.element.addEventListener('_ready', app);
         app.height = 300;
+        app._pendingReady = true;
 
         stubSetHeight = this.sinon.stub(app, '_setHeight');
         stubOpen = this.sinon.stub(AppWindow.prototype, 'open');
@@ -134,6 +135,7 @@ suite('system/InputWindow', function() {
         assert.isTrue(stubSetHeight.calledWith(300));
         assert.isTrue(stubOpen.calledOn(app),
                       'should call superclass open');
+        assert.isFalse(app._pendingReady, 'should reset _pendingReady');
       });
 
       test('immediateOpen = true', function() {
@@ -164,8 +166,26 @@ suite('system/InputWindow', function() {
   });
 
   suite('setHeight()', function() {
-    setup(function() {
-      this.sinon.stub(app, '_getDpx').returns(2.5);
+    var oldDevicePixelRatio;
+
+    suiteSetup(function() {
+      oldDevicePixelRatio = window.devicePixelRatio;
+
+      Object.defineProperty(window, 'devicePixelRatio', {
+        get: function() {
+          return 2.5;
+        },
+        configurable: true
+      });
+    });
+
+    suiteTeardown(function() {
+      Object.defineProperty(window, 'devicePixelRatio', {
+        get: function() {
+          return oldDevicePixelRatio;
+        },
+        configurable: true
+      });
     });
 
     test('without rounding', function () {
@@ -234,7 +254,7 @@ suite('system/InputWindow', function() {
         stubRemoveEventListener.calledWith('mozbrowserresize', app, true)
       );
 
-      assert.strictEqual(app.height, undefined);
+      assert.strictEqual(app.height, 0);
     });
   });
 
@@ -260,6 +280,17 @@ suite('system/InputWindow', function() {
     setup(function() {
       app.hash = '#ime1';
       app.pathInitial = '/index.html';
+    });
+
+    test('should set _pendingReady', function() {
+      app._pendingReady = false;
+
+      app.open({
+        hash: '#ime1',
+        immediateOpen: false
+      });
+
+      assert.isTrue(app._pendingReady);
     });
 
     test('hash changed', function() {

@@ -2,6 +2,17 @@
 'use strict';
 
 (function(exports) {
+  /**
+   * For smart screen, we use transparent background for smart settings app to
+   * have a semi-transparent overlay on top of other app. And smart settings may
+   * change the color settings which need to see through the smart settings app.
+   * The color is applied to gecko while user change the color settings and user
+   * gets the result immediately.
+   */
+  const TRANSPARENT_ACTIVITY_WHITE_LIST = Object.freeze([
+    /^(http|https|app)\:\/\/smart-settings\.gaiamobile\.org\//
+  ]);
+
   var _id = 0;
 
   /**
@@ -80,6 +91,10 @@
         this.containerElement = caller.element;
       }
     }
+
+    this.transparent = TRANSPARENT_ACTIVITY_WHITE_LIST.some(function(regex) {
+      return regex.test(config.manifestURL);
+    });
 
     this.publish('creating');
     this.render();
@@ -162,9 +177,9 @@
     };
 
   ActivityWindow.prototype.view = function acw_view() {
-    this.instanceID = _id;
+    this.instanceID = this.CLASS_NAME + '_' + _id++;
     return '<div class="appWindow activityWindow inline-activity' +
-            '" id="activity-window-' + _id++ + '">' +
+            '" id="' + this.instanceID + '">' +
             '<div class="titlebar">' +
             ' <div class="notifications-shadow"></div>' +
             '</div>' +
@@ -210,7 +225,11 @@
     };
     this.browser = new BrowserFrame(this.browser_config);
     this.element =
-      document.getElementById('activity-window-' + this.instanceID);
+      document.getElementById(this.instanceID);
+
+    if (this.transparent) {
+      this.element.classList.add('transparent-inline-activity');
+    }
 
     this.browserContainer = this.element.querySelector('.browser-container');
     this.browserContainer.appendChild(this.browser.element);

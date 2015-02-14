@@ -1,4 +1,4 @@
-/* globals BaseUI, CardsHelper, TrustedUIManager */
+/* globals BaseUI, CardsHelper, Tagged */
 
 /* exported Card */
 
@@ -48,6 +48,20 @@
   Card.prototype.element = null;
 
   /**
+   * CSS visibility value to show/hide close button for this app
+   * @type {String}
+   * @memberof Card.prototype
+   */
+  Card.prototype.closeButtonVisibility = 'hidden';
+
+  /**
+   * CSS visibility value to show/hide favorite button for this app
+   * @type {String}
+   * @memberof Card.prototype
+   */
+  Card.prototype.favoriteButtonVisibility = 'hidden';
+
+  /**
    * Debugging helper to output a useful string representation of an instance.
    * @memberOf Card.prototype
   */
@@ -65,42 +79,45 @@
     return this.manager.useAppScreenshotPreviews;
   };
 
+
   /**
    * Template string representing the innerHTML of the instance's element
    * @memberOf Card.prototype
    */
-  Card.prototype._template =
-    '<div class="titles">' +
-    ' <h1 id="{titleId}" class="title">{title}</h1>' +
-    ' <p class="subtitle">{subTitle}</p>' +
-    '</div>' +
-    '' +
-    '<div class="screenshotView bb-button" data-l10n-id="openCard" ' +
-    '  role="link"></div>' +
-    '<div class="appIconView" style="background-image:{iconValue}"></div>' +
-    '' +
-    '<footer class="card-tray">'+
-    ' <button class="appIcon" data-l10n-id="openCard" ' +
-    '   data-button-action="select" aria-hidden="true"></button>' +
-    ' <menu class="buttonbar">' +
-    '   <button class="close-button bb-button" data-l10n-id="closeCard" ' +
-    '     data-button-action="close" role="button" ' +
-    '     style="visibility: {closeButtonVisibility}"></button>' +
-    '  <button class="favorite-button bb-button" ' +
-    '    data-button-action="favorite" role="button" ' +
-    '    style="visibility: {favoriteButtonVisibility}"></button>' +
-    ' </menu>' +
-    '</footer>';
+  Card.prototype.template = function() {
+    // fix a jshint issue with tagged template strings
+    // https://github.com/jshint/jshint/issues/2000
+    /* jshint -W033 */
+    return Tagged.escapeHTML `<div class="titles">
+     <h1 id="${this.titleId}" class="title">${this.title}</h1>
+     <p class="subtitle">${this.subTitle}</p>
+    </div>
+
+    <div class="screenshotView bb-button" data-l10n-id="openCard"
+      role="link"></div>
+    <div class="appIconView" style="background-image:${this.iconValue}"></div>
+
+    <footer class="card-tray">
+     <button class="appIcon" data-l10n-id="openCard"
+       data-button-action="select" aria-hidden="true"></button>
+     <menu class="buttonbar">
+       <button class="close-button bb-button" data-l10n-id="closeCard"
+         data-button-action="close" role="button"
+         style="visibility: ${this.closeButtonVisibility}"></button>
+      <button class="favorite-button bb-button"
+        data-button-action="favorite" role="button"
+        style="visibility: ${this.favoriteButtonVisibility}"></button>
+     </menu>
+    </footer>`;
+    /* jshint +W033 */
+  };
 
   /**
    * Card html view - builds the innerHTML for a card element
    * @memberOf Card.prototype
    */
   Card.prototype.view = function c_view() {
-    var viewData = this;
-    return this._template.replace(/\{([^\}]+)\}/g, function(m, key) {
-        return viewData[key];
-    });
+    return this.template();
   };
 
   /**
@@ -110,6 +127,7 @@
   Card.prototype._populateViewData = function() {
     var app = this.app;
     this.title = (app.isBrowser() && app.title) ? app.title : app.name;
+    this.sslState = app.getSSLState();
     this.subTitle = '';
     this.iconValue = '';
     this.closeButtonVisibility = 'visible';
@@ -124,18 +142,23 @@
     }
 
     var origin = app.origin;
-    var popupFrame;
     var frameForScreenshot = app.getFrameForScreenshot();
+    var displayUrl = '';
 
-    if (frameForScreenshot &&
+    if (app.isBrowser()) {
+      displayUrl = app.config.url || origin;
+    } else if(frameForScreenshot &&
         CardsHelper.getOffOrigin(frameForScreenshot.src, origin)) {
-      this.subTitle = CardsHelper.getOffOrigin(
-                        frameForScreenshot.src, origin);
+      displayUrl = CardsHelper.getOffOrigin(frameForScreenshot.src, origin);
+    }
+    if (displayUrl) {
+      this.subTitle = this.getDisplayURLString(displayUrl);
     }
 
-    if (TrustedUIManager.hasTrustedUI(app.origin)) {
-      popupFrame = TrustedUIManager.getDialogFromOrigin(app.origin);
-      this.title = CardsHelper.escapeHTML(popupFrame.name || '', true);
+    var topMostWindow = app.getTopMostWindow();
+    if (topMostWindow && topMostWindow.CLASS_NAME === 'TrustedWindow') {
+      var name = topMostWindow.name;
+      this.title = CardsHelper.escapeHTML(name || '', true);
       this.viewClassList.push('trustedui');
     } else if (!this.app.killable()) {
       // unclosable app
@@ -193,6 +216,12 @@
     elem.innerHTML = this.view();
 
     // Label the card by title (for screen reader).
+    elem.setAttribute('aria-labelledby', this.titleId);
+
+    // Indicate security state where applicable & available
+    if (this.sslState) {
+      elem.dataset.ssl = this.sslState;
+    }
     elem.setAttribute('aria-labelledby', this.titleId);
 
     this.viewClassList.forEach(function(cls) {
@@ -330,6 +359,19 @@
     this.screenshotView = this.element.querySelector('.screenshotView');
     this.titleNode = this.element.querySelector('h1.title');
     this.iconButton = this.element.querySelector('.appIcon');
+  };
+
+  Card.prototype.getDisplayURLString = function(url) {
+    // truncation/simplification of URL for card display
+    var anURL;
+    try {
+      anURL = this.app ? new URL(url, this.app.origin) : new URL(url);
+    } catch (e) {
+      // return as-is if url was not valid
+      return url;
+    }
+    var displayString = url.substring(url.indexOf(anURL.host));
+    return displayString;
   };
 
   return (exports.Card = Card);

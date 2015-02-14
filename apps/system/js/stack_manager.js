@@ -1,12 +1,12 @@
 'use strict';
-
-/* global SheetsTransition, System, appWindowManager */
+/* global SheetsTransition, Service, appWindowManager */
 
 var StackManager = {
   init: function sm_init() {
     window.addEventListener('appcreated', this);
     window.addEventListener('launchapp', this);
     window.addEventListener('appopening', this);
+    window.addEventListener('appopened', this);
     window.addEventListener('appterminated', this);
     window.addEventListener('home', this);
     window.addEventListener('cardviewclosed', this);
@@ -23,7 +23,7 @@ var StackManager = {
     // Until then we can get into edge cases where the app currently
     // displayed is not part of the stack and we don't want to break.
     if (!app) {
-      app = System.currentApp;
+      app = Service.currentApp;
     }
 
     return app;
@@ -103,6 +103,8 @@ var StackManager = {
     // queueing.
     if (this._didntMove) {
       window.dispatchEvent(new CustomEvent('sheets-gesture-end'));
+      var current = this.getCurrent();
+      current && current.setNFCFocus(true);
     }
     if (!this._broadcastTimeout) {
       this._broadcast();
@@ -139,7 +141,8 @@ var StackManager = {
   },
 
   get _didntMove() {
-    return !!this._appIn && this._appIn === this._appOut;
+    return (!this._appIn && !this._appOut) ||
+           (!!this._appIn && this._appIn === this._appOut);
   },
 
   set position(position) {
@@ -197,6 +200,7 @@ var StackManager = {
         }
         break;
       case 'appopening':
+      case 'appopened':
         var app = e.detail; // jshint ignore: line
         var root = app.getRootWindow();
 
@@ -333,7 +337,7 @@ var StackManager = {
 
     // We're back to the same place
     if (this._didntMove) {
-      this._appIn.transitionController.clearTransitionClasses();
+      this._appIn && this._appIn.transitionController.clearTransitionClasses();
       this._cleanUp();
       return;
     }

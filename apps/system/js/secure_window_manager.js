@@ -1,5 +1,5 @@
-/* global System */
 'use strict';
+/* global Service */
 
 (function(exports) {
 
@@ -18,7 +18,7 @@
   var SecureWindowManager = function() {
     this.initElements();
     this.initEvents();
-    System.request('registerHierarchy', this);
+    Service.request('registerHierarchy', this);
   };
   SecureWindowManager.prototype = {
     name: 'SecureWindowManager',
@@ -55,23 +55,39 @@
                 'secure-appcreated',
                 'secure-appopened',
                 'secure-appterminated',
-                'secure-apprequestclose',
-                'home'
+                'secure-apprequestclose'
                ]
     }
   };
 
+  SecureWindowManager.prototype.HIERARCHY_MANAGER = 'SecureWindowManager';
+
   SecureWindowManager.prototype.setHierarchy = function(active) {
     if (!this.states.activeApp) {
-      return;
+      return false;
     }
     if (active) {
       this.states.activeApp.focus();
     }
     this.states.activeApp.setVisibleForScreenReader(active);
+    return true;
   };
   SecureWindowManager.prototype.getActiveWindow = function() {
     return this.isActive() ? this.states.activeApp : null;
+  };
+  SecureWindowManager.prototype._handle_home = function() {
+    if (0 !== Object.keys(this.states.runningApps).length) {
+      this.elements.screen.classList.remove('secure-app');
+      this.softKillApps();
+    }
+    return true;
+  };
+  SecureWindowManager.prototype.respondToHierarchyEvent = function(evt) {
+    if (this['_handle_' + evt.type]) {
+      return this['_handle_' + evt.type](evt);
+    } else {
+      return true;
+    }
   };
 
   /**
@@ -135,12 +151,6 @@
           app.close(this.states.killMode ?
               this.configs.killAnimation : null);
           this.elements.screen.classList.remove('secure-app');
-          break;
-        case 'home':
-          if (0 !== Object.keys(this.states.runningApps).length) {
-            this.elements.screen.classList.remove('secure-app');
-            this.softKillApps();
-          }
           break;
       }
     };

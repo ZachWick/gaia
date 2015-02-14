@@ -2,13 +2,24 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from marionette import expected
-from marionette.by import By
-from marionette.errors import NoSuchElementException
-from marionette.marionette import Actions
-from marionette.wait import Wait
+try:
+    from marionette import expected
+    from marionette.by import By
+    from marionette.errors import (NoSuchElementException,
+                                   StaleElementException)
+    from marionette.marionette import Actions
+    from marionette.wait import Wait
+except:
+    from marionette_driver import expected
+    from marionette_driver.by import By
+    from marionette_driver.errors import (NoSuchElementException,
+                                   StaleElementException)
+    from marionette_driver.marionette import Actions
+    from marionette_driver.wait import Wait
+
 from gaiatest.apps.base import Base
 from gaiatest.apps.base import PageRegion
+from gaiatest.apps.calendar.regions.event_details import EventDetails
 
 
 class Calendar(Base):
@@ -16,7 +27,7 @@ class Calendar(Base):
     name = 'Calendar'
 
     _current_month_year_locator = (By.ID, 'current-month-year')
-    _current_months_day_locator = (By.ID, 'months-day-view')
+    _current_month_day_agenda_locator = (By.ID, 'month-day-agenda')
     _current_monthly_calendar_locator = (By.ID, 'month-view')
     _add_event_button_locator = (By.XPATH, "//a[@href='/event/add/']")
 
@@ -48,8 +59,12 @@ class Calendar(Base):
     _event_list_date_locator = (By.ID, 'event-list-date')
     _event_list_empty_locator = (By.ID, 'empty-message')
     _event_locator = (By.CLASS_NAME, 'event')
-    _today_locator = (By.CLASS_NAME, 'present')
-    _tomorrow_locator = (By.CSS_SELECTOR, '.present + li > .day')
+    _today_locator = (By.CSS_SELECTOR, '.month.active .present')
+    _tomorrow_locator = (By.CSS_SELECTOR, '.month.active .present + li > .day')
+
+    _day_view_all_day_button = (By.CSS_SELECTOR,
+                                '.day-view .md__allday:nth-child(2) .md__allday-events')
+    _day_view_event_link = (By.CSS_SELECTOR, '.day-view .md__day:nth-child(2) .md__event')
 
     def launch(self):
         Base.launch(self)
@@ -65,7 +80,7 @@ class Calendar(Base):
 
     @property
     def current_month_day(self):
-        return self.marionette.find_element(*self._current_months_day_locator).get_attribute('data-date')
+        return self.marionette.find_element(*self._current_month_day_agenda_locator).get_attribute('data-date')
 
     @property
     def event_list_date(self):
@@ -132,7 +147,7 @@ class Calendar(Base):
                 *self._current_monthly_calendar_locator))))
         Wait(self.marionette).until(expected.element_displayed(
             Wait(self.marionette).until(expected.element_present(
-                *self._current_months_day_locator))))
+                *self._current_month_day_agenda_locator))))
 
     def a11y_click_day_display_button(self):
         self.accessibility.click(self.marionette.find_element(*self._day_display_button_locator))
@@ -201,27 +216,40 @@ class Calendar(Base):
 
     def a11y_click_create_account_back(self):
         self.a11y_click_header(self.marionette.find_element(*self._create_account_header_locator),
-                               'button.icon-back')
+                               'button.action-button')
         Wait(self.marionette).until(expected.element_displayed(
             Wait(self.marionette).until(expected.element_present(
                 *self._advanced_settings_view_locator))))
 
     def a11y_click_modify_account_back(self):
         self.a11y_click_header(self.marionette.find_element(*self._modify_account_header_locator),
-                               'button.icon-back')
+                               'button.action-button')
         Wait(self.marionette).until(expected.element_displayed(
             Wait(self.marionette).until(expected.element_present(
                 *self._create_account_view_locator))))
 
     def a11y_click_settings(self):
         self.a11y_click_header(self.marionette.find_element(*self._time_header_locator),
-                               'button.icon-menu')
+                               'button.action-button')
         self.wait_fot_settings_drawer_animation()
 
     def a11y_click_close_settings(self):
         self.a11y_click_header(self.marionette.find_element(
-            *self.settings._settings_header_locator), 'button.icon-menu')
+            *self.settings._settings_header_locator), 'button.action-button')
         self.wait_fot_settings_drawer_animation()
+
+    def a11y_create_event(self, title):
+        new_event = self.a11y_click_add_event_button()
+        # create a new event
+        new_event.a11y_fill_event_title(title)
+        new_event.a11y_click_save_event()
+        self.wait_for_events(1)
+
+    def a11y_click_day_view_event(self):
+        self.accessibility.click(self.marionette.find_element(*self._day_view_event_link))
+        el = self.marionette.find_element(*self._event_view_locator)
+        Wait(self.marionette).until(expected.element_displayed(el))
+        return EventDetails(self.marionette)
 
     def flick_to_next_month(self):
         self._flick_to_month('next')
@@ -273,7 +301,7 @@ class Calendar(Base):
             Wait(self.marionette, timeout).until(expected.element_not_selected(checkbox))
 
         def wait_for_a11y_calendar_unchecked(self, timeout=None):
-            Wait(self.marionette, timeout).until(
+            Wait(self.marionette, timeout, ignored_exceptions=StaleElementException).until(
                 lambda m: not self.marionette.find_element(
                     *self._calendar_local_locator).get_attribute('aria-selected'))
 
@@ -295,5 +323,4 @@ class Calendar(Base):
             self.accessibility.click(self.root_element)
             el = self.marionette.find_element(*self._event_view_locator)
             Wait(self.marionette).until(expected.element_displayed(el))
-            from gaiatest.apps.calendar.regions.event_details import EventDetails
             return EventDetails(self.marionette)

@@ -1,4 +1,4 @@
-/* global layoutManager */
+/* global layoutManager, SettingsListener */
 'use strict';
 (function(exports) {
   var DEBUG = false;
@@ -10,29 +10,30 @@
     this.containerElement =
       document.getElementById('text-selection-dialog-root');
     this.event = null;
-    this._hideTimeout = null;
+    this._enabled = false;
+    this._shortcutTimeout = null;
     this._injected = false;
     this._hasCutOrCopied = false;
     this._ignoreSelectionChange = false;
     this._isCommandSendable = false;
     this._transitionState = 'closed';
     this._scrolling = false;
-
-    this._previousOffsetX = 0;
-    this._previousOffsetY = 0;
-
-    window.addEventListener('activeappchanged', this);
-    window.addEventListener('home', this);
-    window.addEventListener('mozChromeEvent', this);
-    window.addEventListener('value-selector-shown', this);
-    window.addEventListener('value-selector-hidden', this);
+    this._isSelectionVisible = true;
+    SettingsListener.observe('copypaste.enabled', true,
+      function onObserve(value) {
+        if (value) {
+          this.start();
+        } else {
+          this.stop();
+        }
+      }.bind(this));
   };
 
   TextSelectionDialog.prototype = Object.create(window.BaseUI.prototype);
 
   TextSelectionDialog.prototype.TEXTDIALOG_HEIGHT = 52;
 
-  TextSelectionDialog.prototype.TEXTDIALOG_WIDTH = 52;
+  TextSelectionDialog.prototype.TEXTDIALOG_WIDTH = 54;
 
   // Based on UX spec, there would be a temporary shortcut and only appears
   // after the action 'copy/cut'. In this use case, the utility bubble will be
@@ -61,7 +62,33 @@
 
   TextSelectionDialog.prototype.ELEMENT_PREFIX = 'textselection-dialog-';
 
-  TextSelectionDialog.prototype.debug = function aw_debug(msg) {
+  TextSelectionDialog.prototype.start = function tsd_start() {
+    if (this._enabled) {
+      return;
+    }
+    this._enabled = true;
+    window.addEventListener('hierachychanged', this);
+    window.addEventListener('activeappchanged', this);
+    window.addEventListener('home', this);
+    window.addEventListener('mozChromeEvent', this);
+    window.addEventListener('value-selector-shown', this);
+    window.addEventListener('value-selector-hidden', this);
+  };
+
+  TextSelectionDialog.prototype.stop = function tsd_stop() {
+    if (!this._enabled) {
+      return;
+    }
+    this._enabled = false;
+    window.removeEventListener('hierachychanged', this);
+    window.removeEventListener('activeappchanged', this);
+    window.removeEventListener('home', this);
+    window.removeEventListener('mozChromeEvent', this);
+    window.removeEventListener('value-selector-shown', this);
+    window.removeEventListener('value-selector-hidden', this);
+  };
+
+  TextSelectionDialog.prototype.debug = function tsd_debug(msg) {
     if (DEBUG || this._DEBUG) {
       console.log('[Dump: ' + this.ID_NAME + ']' +
         JSON.stringify(msg));
@@ -72,6 +99,7 @@
     switch (evt.type) {
       case 'home':
       case 'activeappchanged':
+      case 'hierachychanged':
         this.close();
         break;
       case 'value-selector-shown':
@@ -82,30 +110,47 @@
         break;
       case 'mozChromeEvent':
         switch (evt.detail.type) {
-          case 'selectionchange':
-            this._onSelectionChange(evt);
+          case 'selectionstatechanged':
+            if (this._ignoreSelectionChange) {
+              return;
+            }
+            evt.preventDefault();
+            evt.stopPropagation();
+
+            var detail = evt.detail.detail;
+            if (!detail) {
+              return;
+            }
+            this.debug('on receive selection change event');
+            this.debug(JSON.stringify(detail));
+
+            this._isSelectionVisible = detail.visible;
+            // Separate collapse mode and selection mode for easier handling.
+            if (detail.isCollapsed) {
+              this._onCollapsedMode(detail);
+            } else {
+              this._onSelectionMode(detail);
+
+            }
             break;
           case 'scrollviewchange':
             this.debug('scrollviewchange');
             this.debug(JSON.stringify(evt.detail.detail));
             if (evt.detail.detail.state === 'started' &&
                 this._transitionState === 'opened') {
-              this._previousOffsetX = evt.detail.detail.scrollX;
-              this._previousOffsetY = evt.detail.detail.scrollY;
               this._changeTransitionState('closed');
               this._scrolling = true;
             } else if (evt.detail.detail.state === 'stopped' &&
                        this._scrolling === true) {
               this._scrolling = false;
-              this.updateDialogPosition(
-                evt.detail.detail.scrollX - this._previousOffsetX,
-                evt.detail.detail.scrollY - this._previousOffsetY
-              );
-              this._previousOffsetX = 0;
-              this._previousOffsetY = 0;
+              if (this._isSelectionVisible) {
+                this.updateDialogPosition();
+              }
             }
             break;
           case 'touchcarettap':
+            // We'll remove this event handler after bug 1120750 is merged.
+            this.debug('touchcarettap');
             this.show(this.textualmenuDetail);
             this._triggerShortcutTimeout();
             break;
@@ -113,51 +158,61 @@
     }
   };
 
-  TextSelectionDialog.prototype._onSelectionChange =
-    function tsd__onSelectionChange(evt) {
-      if (this._ignoreSelectionChange) {
-        return;
-      }
-      evt.preventDefault();
-      evt.stopPropagation();
-
-      var detail = evt.detail.detail;
-      if (!detail) {
-        return;
-      }
-      this.debug('on receive selection change event');
-      this.debug(JSON.stringify(detail));
-      var rect = detail.rect;
-      var reasons = detail.reasons;
+  TextSelectionDialog.prototype._onCollapsedMode =
+    function tsd__onCollapsedMode(detail) {
+      var states = detail.states;
       var commands = detail.commands;
-      var isCollapsed = detail.isCollapsed;
-      var isTempShortcut = this._hasCutOrCopied && isCollapsed;
+      this.textualmenuDetail = detail;
+      // User can tap on empty column within shortcut timeout or simply tap on
+      // caret to launch bubble.
+      if (states.indexOf('taponcaret') !== -1 ||
+          (states.indexOf('mouseup') !== -1 && this._hasCutOrCopied) ||
+          (this._transitionState === 'opened' &&
+           states.indexOf('updateposition') !== -1 )) {
+        // In collapsed mode, only paste option will be displaed if we have
+        // copied or cut before.
+        commands.canSelectAll = false;
+        this.show(detail);
+        this._triggerShortcutTimeout();
+      } else {
+        this.hide();
+      }
+    };
+
+  TextSelectionDialog.prototype._onSelectionMode =
+    function tsd__onSelectionMode(detail) {
+      var rect = detail.rect;
+      var states = detail.states;
+      var commands = detail.commands;
       var rectHeight = rect.top - rect.bottom;
       var rectWidth = rect.right - rect.left;
 
-      // In collapsed mode, only paste option will be displaed if we have copied
-      // or cut before.
-      if (isCollapsed && reasons.indexOf('mouseup') !== -1) {
-        this.textualmenuDetail = detail;
-        commands.canSelectAll = false;
+      if (!this._isSelectionVisible) {
+        this.close();
+        return;
       }
-
-      // We should hide the bubble when user call selection.collapseToEnd() by
-      // script.
-      if (reasons.indexOf('collapsetoend') !== -1) {
+      // If current element lost focus, we should hide the bubble.
+      if (states.indexOf('blur') !== -1) {
         this.hide();
         return;
       }
 
-      if (reasons.indexOf('mouseup') !== -1 && rectHeight === 0 &&
-          rectWidth === 0 && !isTempShortcut) {
+      // We should hide the bubble when user call selection.collapseToEnd() by
+      // script.
+      if (states.indexOf('collapsetoend') !== -1) {
+        this.hide();
+        return;
+      }
+
+      if (states.indexOf('mouseup') !== -1 && rectHeight === 0 &&
+          rectWidth === 0) {
         this.hide();
         return;
       }
 
       // We should not do anything if below cases happen.
-      if (reasons.length === 0 || (
-          rectHeight === 0 && rectWidth === 0 && !isTempShortcut) ||
+      if (states.length === 0 || (
+          rectHeight === 0 && rectWidth === 0) ||
           !(commands.canPaste || commands.canCut || commands.canSelectAll ||
             commands.canCopy)
         ) {
@@ -169,26 +224,25 @@
         this._injected = true;
       }
 
-      if (reasons.indexOf('selectall') !== -1 ||
-          reasons.indexOf('mouseup') !== -1) {
-        if (!isTempShortcut && isCollapsed) {
-          this.close();
-          return;
-        }
-
+      if (states.indexOf('selectall') !== -1 ||
+          states.indexOf('mouseup') !== -1 ||
+          states.indexOf('updateposition') !== -1) {
         this.show(detail);
-        if (isTempShortcut) {
-          this._triggerShortcutTimeout();
-        }
         return;
       }
       this.hide();
     };
 
+  TextSelectionDialog.prototype._resetShortcutTimeout =
+    function tsd__resetShortcutTimeout() {
+      window.clearTimeout(this._shortcutTimeout);
+      this._shortcutTimeout = null;
+    };
+
   TextSelectionDialog.prototype._triggerShortcutTimeout =
     function tsd__triggerShortcutTimeout() {
-      window.clearTimeout(this._hideTimeout);
-      this._hideTimeout = window.setTimeout(function() {
+      this._resetShortcutTimeout();
+      this._shortcutTimeout = window.setTimeout(function() {
         this.close();
       }.bind(this), this.SHORTCUT_TIMEOUT);
     };
@@ -320,15 +374,15 @@
   };
 
   TextSelectionDialog.prototype.view = function tsd_view() {
-    var temp = '<div class="textselection-dialog" id="' + this.ID_NAME + '">' +
-              '<div data-action="selectall" ' +
-                'class="textselection-dialog-selectall"></div>' +
-              '<div data-action="cut" class="textselection-dialog-cut"></div>' +
-              '<div data-action="copy" class="textselection-dialog-copy">' +
-                '</div>' +
-              '<div data-action="paste" class="textselection-dialog-paste">' +
-                '</div>' +
-            '</div>';
+    var temp = `<div class="textselection-dialog" id="${this.ID_NAME}">
+              <div data-action="selectall"
+                class="textselection-dialog-selectall"></div>
+              <div data-action="cut" class="textselection-dialog-cut"></div>
+              <div data-action="copy" class="textselection-dialog-copy">
+                </div>
+              <div data-action="paste" class="textselection-dialog-paste">
+                </div>
+            </div>`;
     return temp;
   };
 
@@ -342,8 +396,7 @@
 
 
   TextSelectionDialog.prototype.show = function tsd_show(detail) {
-
-    clearTimeout(this._hideTimeout);
+    this._resetShortcutTimeout();
     var numOfSelectOptions = 0;
     var options = [ 'Paste', 'Copy', 'Cut', 'SelectAll' ];
 
@@ -366,12 +419,12 @@
     // Add last-option class to the last item of options array;
     lastVisibleOption.classList.add('last-option');
 
-    this.updateDialogPosition(0, 0);
+    this.updateDialogPosition();
   };
 
   TextSelectionDialog.prototype.updateDialogPosition =
-    function tsd_updateDialogPosition(scrollOffsetW, scrollOffsetH) {
-      var pos = this.calculateDialogPostion(scrollOffsetW, scrollOffsetH);
+    function tsd_updateDialogPosition() {
+      var pos = this.calculateDialogPostion();
       this.debug(pos);
       this.element.style.top = pos.top + 'px';
       this.element.style.left = pos.left + 'px';
@@ -379,20 +432,13 @@
     };
 
   TextSelectionDialog.prototype.calculateDialogPostion =
-    function tsd_calculateDialogPostion(scrollOffsetW, scrollOffsetH) {
+    function tsd_calculateDialogPostion() {
       var numOfSelectOptions = this.numOfSelectOptions;
       var detail = this.textualmenuDetail;
       var frameHeight = layoutManager.height;
       var frameWidth = layoutManager.width;
       var selectOptionWidth = this.TEXTDIALOG_WIDTH;
       var selectOptionHeight = this.TEXTDIALOG_HEIGHT;
-
-      this.debug('scrollOffsetW  ' + scrollOffsetW + '; scrollOffsetH ' +
-        scrollOffsetH);
-      detail.rect.top -= scrollOffsetH;
-      detail.rect.bottom -= scrollOffsetH;
-      detail.rect.left -= scrollOffsetW;
-      detail.rect.right -= scrollOffsetW;
 
       var selectDialogTop = (detail.rect.top) *
         detail.zoomFactor;
@@ -451,7 +497,7 @@
     this.hide();
     this.element.blur();
     this.textualmenuDetail = null;
-    clearTimeout(this._hideTimeout);
+    this._resetShortcutTimeout();
   };
 
   exports.TextSelectionDialog = TextSelectionDialog;

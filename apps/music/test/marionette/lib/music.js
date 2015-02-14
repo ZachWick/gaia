@@ -2,12 +2,11 @@
 'use strict';
 
 var assert = require('assert');
-var Actions = require('marionette-client').Actions;
 
 function Music(client, origin) {
   this.client = client;
   this.origin = origin || ('app://' + Music.DEFAULT_ORIGIN);
-  this.actions = new Actions(client);
+  this.actions = client.loader.getActions();
 }
 
 module.exports = Music;
@@ -17,9 +16,22 @@ Music.DEFAULT_ORIGIN = 'music.gaiamobile.org';
 Music.Selector = Object.freeze({
   messageOverlay: '#overlay',
   firstTile: '.tile',
+  artistsTab: '#tabs-artists',
   songsTab: '#tabs-songs',
   albumsTab: '#tabs-albums',
   coverImage: '#player-cover-image',
+
+  // search fields
+  searchTiles: '#views-tiles-search',
+  searchTilesField: '#views-tiles-search-input',
+  searchList: '#views-list-search',
+  searchListField: '#views-list-search-input',
+  // search results
+  searchArtists: '#views-search-artists',
+  searchAlbums: '#views-search-albums',
+  searchTitles: '#views-search-titles',
+  searchNoResult: '#views-search-no-result',
+
   viewsList: '#views-list-anchor',
   viewsSublist: '#views-sublist-anchor',
   firstSong: '.list-item',
@@ -41,6 +53,10 @@ Music.prototype = {
 
   get firstTile() {
     return this.client.findElement(Music.Selector.firstTile);
+  },
+
+  get artistsTab() {
+    return this.client.helper.waitForElement(Music.Selector.artistsTab);
   },
 
   get songsTab() {
@@ -131,7 +147,7 @@ Music.prototype = {
   },
 
   waitForFirstTile: function() {
-    this.client.helper.waitForElement(this.firstTile);
+    this.client.helper.waitForElement(Music.Selector.firstTile);
   },
 
   waitForMessageOverlayShown: function(shouldBeShown) {
@@ -163,6 +179,31 @@ Music.prototype = {
     var display = this.playerIcon.cssProperty('display');
     var result = (display !== 'none');
     assert.equal(shouldBeShown, result);
+  },
+
+  searchArtists: function(searchTerm) {
+    this.search(Music.Selector.searchList,
+                Music.Selector.searchListField, searchTerm);
+  },
+
+  searchTiles: function(searchTerm) {
+    this.search(Music.Selector.searchTiles,
+                Music.Selector.searchTilesField, searchTerm);
+  },
+
+  search: function(viewSelector, fieldSelector, searchTerm) {
+    this.client.helper.waitForElement(viewSelector);
+
+    var input = this.client.helper.waitForElement(fieldSelector);
+    assert.ok(input);
+
+    input.clear();
+    this.client.waitFor(input.displayed.bind(input));
+    input.sendKeys(searchTerm);
+  },
+
+  switchToArtistsView: function() {
+    this.artistsTab.tap();
   },
 
   switchToSongsView: function() {

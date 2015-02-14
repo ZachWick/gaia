@@ -1,37 +1,17 @@
 'use strict';
-/* global ItemStore, LazyLoader, Configurator, SettingsListener, groupEditor */
+/* global ItemStore, LazyLoader, Configurator, groupEditor */
 
 (function(exports) {
 
   // Hidden manifest roles that we do not show
-  const HIDDEN_ROLES = ['system', 'input', 'homescreen', 'theme'];
+  const HIDDEN_ROLES = [
+    'system', 'input', 'homescreen', 'theme', 'addon', 'langpack'
+  ];
 
   function App() {
+    window.performance.mark('navigationLoaded');
     window.dispatchEvent(new CustomEvent('moz-chrome-dom-loaded'));
     this.grid = document.getElementById('icons');
-
-    SettingsListener.observe('verticalhome.grouping.enabled', false,
-      (value) => {
-        var groupingEnabled = value;
-        if (typeof this.grouping !== 'undefined') {
-          if (groupingEnabled != this.grouping) {
-            window.location.reload();
-            return;
-          }
-        }
-
-        this.grouping = groupingEnabled;
-        if (groupingEnabled) {
-          document.body.classList.add('grouping');
-          LazyLoader.load(
-            ['shared/elements/gaia_grid/js/items/group.js'],
-            () => {
-              this.init();
-            });
-        } else {
-          this.init();
-        }
-      });
 
     this.grid.addEventListener('iconblobdecorated', this);
     this.grid.addEventListener('gaiagrid-iconbloberror', this);
@@ -57,6 +37,7 @@
     // and should be retried when/if we come online again.
     this._iconsToRetry = [];
 
+    window.performance.mark('navigationInteractive');
     window.dispatchEvent(new CustomEvent('moz-chrome-interactive'));
   }
 
@@ -122,7 +103,9 @@
           }.bind(this));
         }
 
+        window.performance.mark('visuallyLoaded');
         window.dispatchEvent(new CustomEvent('moz-app-visually-complete'));
+        window.performance.mark('contentInteractive');
         window.dispatchEvent(new CustomEvent('moz-content-interactive'));
 
         window.addEventListener('localized', this.onLocalized.bind(this));
@@ -130,6 +113,7 @@
                          'js/contextmenu_handler.js',
                          '/shared/js/homescreens/confirm_dialog_helper.js'],
           function() {
+            window.performance.mark('fullyLoaded');
             window.dispatchEvent(new CustomEvent('moz-app-loaded'));
           });
       }.bind(this));
@@ -164,6 +148,7 @@
         var element = item.element.querySelector('.title');
         element.textContent = item.name;
       });
+      this.renderGrid();
     },
 
     /**
@@ -280,5 +265,6 @@
     }
   };
   exports.app = new App();
+  exports.app.init();
 
 }(window));

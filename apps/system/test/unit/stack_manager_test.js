@@ -1,10 +1,10 @@
 /* global StackManager, AppWindow, MockAppWindowManager, Event, MocksHelper,
-          MockSystem, HomescreenLauncher, MockSheetsTransition */
+          MockService, HomescreenLauncher, MockSheetsTransition */
 'use strict';
 
 requireApp('system/js/stack_manager.js');
 requireApp('system/test/unit/mock_app_window.js');
-requireApp('system/shared/test/unit/mocks/mock_system.js');
+requireApp('system/shared/test/unit/mocks/mock_service.js');
 requireApp('system/test/unit/mock_app_window_manager.js');
 requireApp('system/test/unit/mock_homescreen_launcher.js');
 requireApp('system/test/unit/mock_layout_manager.js');
@@ -13,7 +13,7 @@ requireApp('system/test/unit/mock_sheets_transition.js');
 var mocksForStackManager = new MocksHelper([
   'AppWindow', 'AppWindowManager',
   'HomescreenLauncher', 'LayoutManager',
-  'SheetsTransition', 'System'
+  'SheetsTransition', 'Service'
 ]).init();
 
 suite('system/StackManager >', function() {
@@ -126,7 +126,7 @@ suite('system/StackManager >', function() {
     this.sinon.clock.tick(800); // Making sure everything got broadcasted
     window.homescreenLauncher = undefined;
     StackManager.__clearAll();
-    MockSystem.currentApp = null;
+    MockService.currentApp = null;
   });
 
   function appLaunch(app, warm) {
@@ -167,9 +167,15 @@ suite('system/StackManager >', function() {
     window.dispatchEvent(new Event('home'));
   }
 
-  function openAppFromCardView(app) {
+  function appOpening(app) {
     var evt = document.createEvent('CustomEvent');
     evt.initCustomEvent('appopening', true, false, app);
+    window.dispatchEvent(evt);
+  }
+
+  function appOpened(app) {
+    var evt = document.createEvent('CustomEvent');
+    evt.initCustomEvent('appopened', true, false, app);
     window.dispatchEvent(evt);
   }
 
@@ -203,7 +209,7 @@ suite('system/StackManager >', function() {
       setup(function() {
         appLaunch(settings);
         appLaunch(operatorVariant);
-        MockSystem.currentApp = operatorVariant;
+        MockService.currentApp = operatorVariant;
 
         this.sinon.stub(settings, 'getActiveWindow').returns(null);
       });
@@ -232,6 +238,13 @@ suite('system/StackManager >', function() {
     teardown(function() {
       StackManager.__clearAll();
     });
+  });
+
+  test('_didntMove by default is true', function() {
+    appLaunch(dialer);
+    this.sinon.stub(dialer, 'setNFCFocus');
+    StackManager.commit();
+    assert.isTrue(dialer.setNFCFocus.calledWith(true));
   });
 
   suite('Cards View Events', function() {
@@ -462,6 +475,14 @@ suite('system/StackManager >', function() {
 
     test('it should become the current stack item', function() {
       assert.deepEqual(StackManager.getCurrent().config, dialer.config);
+    });
+
+    test('it should set the position when opened', function() {
+      var fakePosition = 10;
+      assert.equal(StackManager.position, 0);
+      this.sinon.stub(StackManager, '_indexOfInstanceID').returns(fakePosition);
+      appOpened(dialer);
+      assert.equal(StackManager.position, fakePosition);
     });
 
     suite('then another app is launched', function() {
@@ -710,7 +731,7 @@ suite('system/StackManager >', function() {
     appLaunch(dialer);
     appLaunch(contact);
     appLaunch(settings);
-    openAppFromCardView(dialer);
+    appOpening(dialer);
     assert.deepEqual(StackManager.getCurrent().config, dialer.config);
   });
 

@@ -13,19 +13,40 @@
   var _ = navigator.mozL10n.get;
 
   // Consts
-  const STK_SCREEN_DEFAULT = 0x00;
-  const STK_SCREEN_MAINMENU = 0x01;
-  const STK_SCREEN_HELP = 0x02;
+  // 3GPP spec: TS 11.14
+  // 13.4 Type of Command and Next Action Indicator
+  const STK_NEXT_ACTION_INDICATOR = {
+    16: 'stkItemsNaiSetUpCall',
+    17: 'stkItemsNaiSendSs',
+    18: 'stkItemsNaiSendUssd',
+    19: 'stkItemsNaiSendSms',
+    32: 'stkItemsNaiPlayTone',
+    33: 'stkItemsNaiDisplayText',
+    34: 'stkItemsNaiGetInkey',
+    35: 'stkItemsNaiGetInput',
+    36: 'stkItemsNaiSelectItem',
+    37: 'stkItemsNaiSetUpMenu',
+    40: 'stkItemsNaiSetIdleModeText',
+    48: 'stkItemsNaiPerformCardApdu',  // class "a"
+    49: 'stkItemsNaiPowerOnCard',      // class "a"
+    50: 'stkItemsNaiPowerOffCard',     // class "a"
+    51: 'stkItemsNaiGetReaderStatus',  // class "a"
+    64: 'stkItemsNaiOpenChannel',      // class "e"
+    65: 'stkItemsNaiCloseChannel',     // class "e"
+    66: 'stkItemsNaiReceiveData',      // class "e"
+    67: 'stkItemsNaiSendData',         // class "e"
+    68: 'stkItemsNaiGetChannelStatus', // class "e"
+    96: 'Reserved',                    // for TIA/EIA-136
+    129: 'stkItemsNaiEndOfTheProactiveSession'
+  };
 
   /**
    * Init
    */
   var iccStkList = document.getElementById('icc-stk-list');
+  var iccStkMainHeader = document.getElementById('icc-stk-main-header');
   var iccStkHeader = document.getElementById('icc-stk-header');
   var iccStkSubheader = document.getElementById('icc-stk-subheader');
-  var exitHelp = document.getElementById('icc-stk-help-exit');
-  var backButton = document.getElementById('icc-stk-app-back');
-  var exitButton = document.getElementById('icc-stk-exit');
   var stkOpenAppName = null;
   var stkLastSelectedText = null;
   var goBackTimer = {
@@ -36,7 +57,47 @@
     timer: null,
     timeout: 0
   };
+  var _visibilityChangeHandler = null;
+  var _backHandler = function() {};
   init();
+
+  function sendVisibilityChangeEvent() {
+    navigator.mozApps.getSelf().onsuccess = function(evt) {
+      var app = evt.target.result;
+      app.connect('settingsstk').then(function onConnAccepted(ports) {
+        DUMP('STK_Settings IAC: ' + ports);
+        ports.forEach(function(port) {
+          DUMP('STK_Settings IAC: ' + port);
+          port.postMessage('StkMenuHidden');
+        });
+      }, function onConnRejected(reason) {
+        DUMP('STK_Settings IAC is rejected');
+        DUMP(reason);
+      });
+    };
+  }
+
+  function getNextActionString(nextActionList, index) {
+    DUMP('STK NAL: ' + nextActionList);
+
+    var nextActionString;
+    if (nextActionList &&
+        nextActionList[index] !== null &&
+        nextActionList[index] !== 96 &&
+        STK_NEXT_ACTION_INDICATOR[nextActionList[index]]) {
+      nextActionString = STK_NEXT_ACTION_INDICATOR[nextActionList[index]];
+    } else {
+      nextActionString = null;
+    }
+    return nextActionString;
+  }
+
+  function visibilityChangeHandler() {
+    if (document.hidden && Settings && Settings.currentPanel == '#icc') {
+      DUMP('STK_Settings visibilityChangeHandler');
+      sendVisibilityChangeEvent();
+    }
+  }
 
   /**
    * Init STK UI
@@ -51,16 +112,26 @@
       function do_handleAsyncSTKCmd(event) {
         updateMenu(event.detail.menu);
       });
+
+    document.addEventListener('visibilitychange',
+      visibilityChangeHandler, false);
+
+    iccStkMainHeader.addEventListener('action', _backHandler);
   }
 
   function addCloseNotificationsEvents(message) {
     function onVisibilityChange() {
       if (document.hidden && Settings && Settings.currentPanel == '#icc') {
+        document.removeEventListener('visibilitychange',
+          _visibilityChangeHandler, false);
         stkResTerminate(message);
       }
     }
-    document.removeEventListener('visibilitychange', onVisibilityChange, false);
-    document.addEventListener('visibilitychange', onVisibilityChange, false);
+    document.removeEventListener('visibilitychange',
+      _visibilityChangeHandler, false);
+    _visibilityChangeHandler = onVisibilityChange;
+    document.addEventListener('visibilitychange',
+      _visibilityChangeHandler, false);
     window.onbeforeunload = function() {
       responseSTKCommand(message, {
         resultCode: iccManager.STK_RESULT_NO_RESPONSE_FROM_USER
@@ -122,30 +193,6 @@
   }
 
   /**
-   * Updates the STK header buttons
-   */
-  function setSTKScreenType(type) {
-    switch (type) {
-      case STK_SCREEN_MAINMENU:
-        exitButton.classList.remove('hidden');
-        backButton.classList.add('hidden');
-        exitHelp.classList.add('hidden');
-        break;
-
-      case STK_SCREEN_HELP:
-        exitButton.classList.add('hidden');
-        backButton.classList.add('hidden');
-        exitHelp.classList.remove('hidden');
-        break;
-
-      default:  // STK_SCREEN_DEFAULT
-        exitButton.classList.add('hidden');
-        backButton.classList.remove('hidden');
-        exitHelp.classList.add('hidden');
-    }
-  }
-
-  /**
    * Response ICC Command
    */
   function responseSTKCommand(message, response) {
@@ -162,10 +209,6 @@
     DUMP('STK Proactive Message:', message);
 
     stkCancelGoBack();
-
-    // By default a generic screen
-    setSTKScreenType(STK_SCREEN_DEFAULT);
-
     reopenSettings();
 
     switch (message.command.typeOfCommand) {
@@ -173,9 +216,7 @@
         addCloseNotificationsEvents(message);
         updateSelection(message);
         Settings.currentPanel = '#icc';
-        backButton.onclick = function _back() {
-          stkResGoBack(message);
-        };
+        _backHandler = stkResGoBack.bind(null, message);
         break;
 
       default:
@@ -196,7 +237,6 @@
     stkCancelGoBack();
 
     clearList();
-    setSTKScreenType(STK_SCREEN_MAINMENU);
 
     if (!menu || !menu.entries || !menu.entries.items ||
       (menu.entries.items.length == 1 && menu.entries.items[0] === null)) {
@@ -207,13 +247,16 @@
     DUMP('STK Main App Menu default item: ' + menu.entries.defaultItem);
 
     showTitle(menu.entries.title);
-    menu.entries.items.forEach(function(menuItem) {
+    menu.entries.items.forEach(function(menuItem, index) {
       DUMP('STK Main App Menu item: ' + menuItem.text + ' # ' +
             menuItem.identifier);
+      var nextActionString = getNextActionString(menu.entries.nextActionList,
+        index);
+      DUMP('STK NEXTACTION: ' + nextActionString);
       iccStkList.appendChild(buildMenuEntry({
         id: 'stk-menuitem-' + menuItem.identifier,
         text: menuItem.text,
-        nai: _(menuItem.nai),
+        nai: _(nextActionString),
         onclick: onMainMenuItemClick,
         attributes: [
           ['stk-menu-item-identifier', menuItem.identifier],
@@ -238,6 +281,10 @@
       updateMenu(menu);
       Settings.currentPanel = '#icc';
     };
+
+    _backHandler = function backToRootPanel() {
+      Settings.currentPanel = '#root';
+    };
   }
 
   function onMainMenuItemClick(event) {
@@ -256,8 +303,6 @@
 
     clearList();
 
-    setSTKScreenType(STK_SCREEN_HELP);
-
     showTitle(_('operatorServices-helpmenu'));
     menu.entries.items.forEach(function(menuItem) {
       DUMP('STK Main App Help item: ' + menuItem.text + ' # ' +
@@ -273,9 +318,7 @@
       }));
     });
 
-    exitHelp.onclick = function _closeHelp() {
-      updateMenu(menu);
-    };
+    _backHandler = updateMenu.bind(null, menu);
   }
 
   function onMainMenuHelpItemClick(event) {
@@ -301,14 +344,18 @@
     DUMP('STK App Menu default item: ' + menu.defaultItem);
 
     showTitle(menu.title);
-    menu.items.forEach(function(menuItem) {
+    menu.items.forEach(function(menuItem, index) {
       DUMP('STK App Menu item: ' + menuItem.text + ' # ' +
         menuItem.identifier);
+      var nextActionString = getNextActionString(menu.nextActionList, index);
+      DUMP('STK NEXTACTION: ' + nextActionString);
       iccStkList.appendChild(buildMenuEntry({
         id: 'stk-menuitem-' + menuItem.identifier,
         text: menuItem.text,
-        nai: _(menuItem.nai),
+        nai: _(nextActionString),
         onclick: function onSelectOptionClick(event) {
+          document.removeEventListener('visibilitychange',
+            _visibilityChangeHandler, false);
           onSelectOption(message, event);
         },
         attributes: [['stk-select-option-identifier', menuItem.identifier]]
@@ -347,8 +394,6 @@
 
     clearList();
 
-    setSTKScreenType(STK_SCREEN_HELP);
-
     showTitle(_('operatorServices-helpmenu'));
     menu.items.forEach(function(menuItem) {
       DUMP('STK Main App Help item: ' + menuItem.text + ' # ' +
@@ -366,9 +411,7 @@
       }));
     });
 
-    exitHelp.onclick = function _closeHelp() {
-      updateSelection(message);
-    };
+    _backHandler = updateSelection.bind(null, message);
   }
 
   function onSelectionHelpItemClick(message, event) {

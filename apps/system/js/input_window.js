@@ -7,6 +7,9 @@
    * This window inherits the AppWindow, and modifies some properties
    * different from the later.
    *
+   * For some flow diagrams related to input management, please refer to
+   * https://wiki.mozilla.org/Gaia/System/InputManagement#Flow_Diagrams .
+   *
    * @class InputWindow
    * @param {OBject} configs The configuration of the input app
    * @augments AppWindow
@@ -18,6 +21,9 @@
     configs.url = configs.origin + configs.path;
 
     this.splashed = true;
+
+    // we're waiting for _ready to fire to do something further
+    this._pendingReady = false;
 
     AppWindow.call(this, configs);
 
@@ -48,11 +54,10 @@
   InputWindow.prototype.containerElement = document.getElementById('keyboards');
 
   InputWindow.prototype.view = function iw_view() {
-    return '<div class=" ' + this.CLASS_LIST +
-            ' " id="' + this.instanceID +
-            '" transition-state="closed">' +
-              '<div class="browser-container"></div>' +
-           '</div>';
+    return `<div class="${this.CLASS_LIST}" id="${this.instanceID}"
+            transition-state="closed">
+              <div class="browser-container"></div>
+           </div>`;
   };
 
   InputWindow.prototype.eventPrefix = 'input-app';
@@ -116,17 +121,13 @@
   InputWindow.prototype._handle__ready =
   function iw_handle__ready(evt) {
     this.element.removeEventListener('_ready', this);
+    this._pendingReady = false;
 
     this._setHeight(evt.detail.height);
 
     AppWindow.prototype.open.call(this,
                                   this.immediateOpen ? 'immediate' : undefined
                                  );
-  };
-
-  // wrap it so we can mock it for testing
-  InputWindow.prototype._getDpx = function iw_getDpx() {
-    return window.devicePixelRatio;
   };
 
   InputWindow.prototype._setHeight = function iw_setHeight(height) {
@@ -139,7 +140,7 @@
     // height if it sees that the height of the keyboard is a fraction when
     // expressed in device pixel.
 
-    var dpx = this._getDpx();
+    var dpx = window.devicePixelRatio;
     if ((height * dpx) % 1 !== 0) {
       height = Math.floor(height * dpx) / dpx;
     }
@@ -171,7 +172,7 @@
       this.browser.element.removeEventListener('mozbrowserresize', this, true);
       this.element.classList.remove('top-most');
 
-      this.height = undefined;
+      this.height = 0;
     }
   };
 
@@ -230,6 +231,7 @@
     this.immediateOpen = configs.immediateOpen;
 
     this.element.addEventListener('_ready', this);
+    this._pendingReady = true;
 
     this._setAsActiveInput(true);
 

@@ -1,10 +1,11 @@
 /* global BookmarksDatabase */
+/* global eventSafety */
 /* global IconsHelper */
 /* global LazyLoader */
 /* global ModalDialog */
 /* global MozActivity */
 /* global SettingsListener */
-/* global System */
+/* global Service */
 
 'use strict';
 
@@ -86,7 +87,13 @@
 
     if (chrome.scrollable) {
       this.app.element.classList.add('collapsible');
-      this.app.element.classList.add('light');
+
+      if (this.app.isPrivateBrowser()) {
+        this.element.classList.add('private');
+      } else {
+        this.app.element.classList.add('light');
+      }
+
       this.scrollable.scrollgrab = true;
     }
 
@@ -105,8 +112,10 @@
     return `<div class="chrome" id="${className}">
               <gaia-progress></gaia-progress>
               <div class="controls">
-                <button type="button" class="back-button" disabled></button>
-                <button type="button" class="forward-button" disabled></button>
+                <button type="button" class="back-button"
+                        data-l10n-id="back-button" disabled></button>
+                <button type="button" class="forward-button"
+                        data-l10n-id="forward-button" disabled></button>
                 <div class="urlbar">
                   <div class="title" data-ssl=""></div>
                   <button type="button" class="reload-button"
@@ -115,7 +124,8 @@
                           data-l10n-id="stop-button"></button>
                 </div>
                 <button type="button" class="menu-button" alt="Menu"></button>
-                <button type="button" class="windows-button"></button>
+                <button type="button" class="windows-button"
+                        data-l10n-id="windows-button"></button>
               </div>
             </div>`;
   };
@@ -136,19 +146,19 @@
   AppChrome.prototype.overflowMenuView = function an_overflowMenuView() {
     var template = `<gaia-overflow-menu>
 
-             <button id="new-window" data-l10n-id="new-window">
-               New Window
-             </button>
+     <button id="new-window" data-l10n-id="new-window">
+     </button>
 
-             <button id="add-to-home" data-l10n-id="add-to-home-screen" hidden>
-               Add to Home Screen
-             </button>
+     <button id="new-private-window" data-l10n-id="new-private-window">
+     </button>
 
-             <button id="share" data-l10n-id="share">
-                 Share
-             </button>
+     <button id="add-to-home" data-l10n-id="add-to-home-screen" hidden>
+     </button>
 
-           </gaia-overflow-menu>`;
+     <button id="share" data-l10n-id="share">
+     </button>
+
+    </gaia-overflow-menu>`;
     return template;
   };
 
@@ -219,6 +229,10 @@
         this.handleLoadEnd(evt);
         break;
 
+      case 'mozbrowsererror':
+        this.handleError(evt);
+        break;
+
       case 'mozbrowserlocationchange':
         this.handleLocationChanged(evt);
         break;
@@ -227,7 +241,7 @@
         this.handleScrollAreaChanged(evt);
         break;
 
-      case 'mozbrowsersecuritychange':
+      case '_securitychange':
         this.handleSecurityChanged(evt);
         break;
 
@@ -264,7 +278,7 @@
         break;
 
       case this.title:
-        if (System && System.locked) {
+        if (Service && Service.locked) {
           return;
         }
         window.dispatchEvent(new CustomEvent('global-search-request'));
@@ -281,6 +295,12 @@
       case this.newWindowButton:
         evt.stopImmediatePropagation();
         this.onNewWindow();
+        break;
+
+      case this.newPrivateWinButton:
+        // Currently not in use, awaiting shared menu web components work.
+        evt.stopImmediatePropagation();
+        this.onNewPrivateWindow();
         break;
 
       case this.addToHomeButton:
@@ -346,11 +366,12 @@
 
     this.app.element.addEventListener('mozbrowserloadstart', this);
     this.app.element.addEventListener('mozbrowserloadend', this);
+    this.app.element.addEventListener('mozbrowsererror', this);
     this.app.element.addEventListener('mozbrowserlocationchange', this);
     this.app.element.addEventListener('mozbrowsertitlechange', this);
     this.app.element.addEventListener('mozbrowsermetachange', this);
     this.app.element.addEventListener('mozbrowserscrollareachanged', this);
-    this.app.element.addEventListener('mozbrowsersecuritychange', this);
+    this.app.element.addEventListener('_securitychange', this);
     this.app.element.addEventListener('_loading', this);
     this.app.element.addEventListener('_loaded', this);
     this.app.element.addEventListener('_namechanged', this);
@@ -401,6 +422,7 @@
 
     this.app.element.removeEventListener('mozbrowserloadstart', this);
     this.app.element.removeEventListener('mozbrowserloadend', this);
+    this.app.element.removeEventListener('mozbrowsererror', this);
     this.app.element.removeEventListener('mozbrowserlocationchange', this);
     this.app.element.removeEventListener('mozbrowsertitlechange', this);
     this.app.element.removeEventListener('mozbrowsermetachange', this);
@@ -450,7 +472,7 @@
   };
 
   AppChrome.prototype.handleSecurityChanged = function(evt) {
-    this.title.dataset.ssl = evt.detail.state;
+    this.title.dataset.ssl = this.app.getSSLState();
   };
 
   AppChrome.prototype.handleTitleChanged = function(evt) {
@@ -481,6 +503,12 @@
     };
 
   AppChrome.prototype.setThemeColor = function ac_setThemColor(color) {
+
+    // Do not set theme color for private windows
+    if (this.app.isPrivateBrowser()) {
+      return;
+    }
+
     this.element.style.backgroundColor = color;
 
     if (!this.app.isHomescreen) {
@@ -494,14 +522,20 @@
     }
 
     var self = this;
-    var previousColor;
+    var finishedFade = false;
+    var endBackgroundFade = function() {
+      finishedFade = true;
+      self.element.removeEventListener('transitionend', endBackgroundFade);
+    };
+    this.element.addEventListener('transitionend', endBackgroundFade);
+    eventSafety(this.element, 'transitionend', endBackgroundFade, 1000);
 
     window.requestAnimationFrame(function updateAppColor() {
-      var computedColor = window.getComputedStyle(self.element).backgroundColor;
-      if (previousColor === computedColor) {
+      if (finishedFade || !self.element) {
         return;
       }
 
+      var computedColor = window.getComputedStyle(self.element).backgroundColor;
       var colorCodes = /rgb\((\d+), (\d+), (\d+)\)/.exec(computedColor);
       if (!colorCodes || colorCodes.length === 0) {
         return;
@@ -513,9 +547,12 @@
       var brightness =
         Math.sqrt((r*r) * 0.241 + (g*g) * 0.691 + (b*b) * 0.068);
 
-      self.app.element.classList.toggle('light', brightness > 200);
-      self.app.publish('titlestatechanged');
-      previousColor = computedColor;
+      var wasLight = self.app.element.classList.contains('light');
+      var isLight  = brightness > 200;
+      if (wasLight != isLight) {
+        self.app.element.classList.toggle('light', isLight);
+        self.app.publish('titlestatechanged');
+      }
       window.requestAnimationFrame(updateAppColor);
     });
   };
@@ -532,6 +569,14 @@
   };
 
   AppChrome.prototype.useLightTheming = function ac_useLightTheming() {
+    // The rear window should dictate the status bar color when the front
+    // window is a popup.
+    if (this.app.CLASS_NAME == 'PopupWindow' &&
+        this.app.rearWindow &&
+        this.app.rearWindow.appChrome) {
+      return this.app.rearWindow.appChrome.useLightTheming();
+    }
+    // All other cases can use the front window.
     return this.app.element.classList.contains('light');
   };
 
@@ -569,6 +614,14 @@
         return;
       }
 
+      // Check if this is just a location-change to an anchor tag.
+      var anchorChange = false;
+      if (this._currentURL && evt.detail) {
+        anchorChange =
+          this._currentURL.replace(/#.*/g, '') ===
+          evt.detail.replace(/#.*/g, '');
+      }
+
       // We wait a small while because if we get a title/name it's even better
       // and we don't want the label to flash
       setTimeout(this._updateLocation.bind(this, evt.detail),
@@ -600,15 +653,17 @@
       // We havent got a name for this location
       this._gotName = false;
 
-      // Make the rocketbar unscrollable until the page resizes to the
-      // appropriate height.
-      this.containerElement.classList.remove('scrollable');
+      if (!anchorChange) {
+        // Make the rocketbar unscrollable until the page resizes to the
+        // appropriate height.
+        this.containerElement.classList.remove('scrollable');
 
-      // Expand
-      if (!this.isMaximized()) {
-        this.element.classList.add('maximized');
+        // Expand
+        if (!this.isMaximized()) {
+          this.element.classList.add('maximized');
+        }
+        this.scrollable.scrollTop = 0;
       }
-      this.scrollable.scrollTop = 0;
     };
 
   AppChrome.prototype.handleLoadStart = function ac_handleLoadStart(evt) {
@@ -620,6 +675,17 @@
     this.containerElement.classList.remove('loading');
   };
 
+  AppChrome.prototype.handleError = function ac_handleError(evt) {
+    if (evt.detail && evt.detail.type === 'fatal') {
+      return;
+    }
+    if (this.useCombinedChrome()) {
+      // When we get an error, keep the rocketbar maximized.
+      this.element.classList.add('maximized');
+      this.containerElement.classList.remove('scrollable');
+    }
+  };
+
   AppChrome.prototype.maximize = function ac_maximize(callback) {
     var element = this.element;
     element.classList.add('maximized');
@@ -629,18 +695,13 @@
       return;
     }
 
-    var safetyTimeout = null;
     var finish = function(evt) {
       if (evt && evt.target !== element) {
         return;
       }
-
-      element.removeEventListener('transitionend', finish);
-      clearTimeout(safetyTimeout);
       callback();
     };
-    element.addEventListener('transitionend', finish);
-    safetyTimeout = setTimeout(finish, 250);
+    eventSafety(element, 'transitionend', finish, 250);
   };
 
   AppChrome.prototype.collapse = function ac_collapse() {
@@ -688,7 +749,6 @@
             url: url,
             name: name,
             icon: icon,
-            useAsyncPanZoom: dataset.useAsyncPanZoom,
             iconable: false
           }
         });
@@ -743,12 +803,15 @@
           querySelector('gaia-overflow-menu');
         this.newWindowButton = this._overflowMenu.
           querySelector('#new-window');
+        this.newPrivateWinButton = this._overflowMenu.
+          querySelector('#new-private-window');
         this.addToHomeButton = this._overflowMenu.
           querySelector('#add-to-home');
         this.shareButton = this._overflowMenu.
           querySelector('#share');
 
         this.newWindowButton.addEventListener('click', this);
+        this.newPrivateWinButton.addEventListener('click', this);
         this.addToHomeButton.addEventListener('click', this);
         this.shareButton.addEventListener('click', this);
 

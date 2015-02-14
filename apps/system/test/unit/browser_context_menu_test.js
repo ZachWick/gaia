@@ -1,5 +1,5 @@
 /*global MocksHelper, MockL10n, AppWindow, BrowserContextMenu,
-  MockMozActivity, MozActivity*/
+  MockMozActivity, MozActivity, MockAppWindowHelper, Browser */
 
 'use strict';
 
@@ -9,6 +9,8 @@ require('/shared/test/unit/mocks/mock_icons_helper.js');
 requireApp('system/test/unit/mock_orientation_manager.js');
 requireApp('system/test/unit/mock_app_window.js');
 require('/shared/test/unit/mocks/mock_moz_activity.js');
+require('/js/browser_config_helper.js');
+require('/js/browser.js');
 
 var mocksForAppModalDialog = new MocksHelper([
   'AppWindow', 'MozActivity', 'LazyLoader', 'IconsHelper'
@@ -33,12 +35,14 @@ suite('system/BrowserContextMenu', function() {
       }
     };
 
-    requireApp('system/js/system.js');
+    requireApp('system/js/service.js');
     requireApp('system/js/base_ui.js');
     requireApp('system/js/browser_context_menu.js', done);
     realMozActivity = window.MozActivity;
     window.MozActivity = MockMozActivity;
     MozActivity.mSetup();
+    window.browser = new Browser();
+    window.browser.start();
   });
 
   teardown(function() {
@@ -55,6 +59,14 @@ suite('system/BrowserContextMenu', function() {
     manifest: {},
     manifestURL: 'app://wwww.fake/ManifestURL',
     origin: 'app://www.fake'
+  };
+
+  var fakePrivateConfig = {
+    url: 'app://www.fake/index.html',
+    manifest: {},
+    manifestURL: 'app://wwww.fake/ManifestURL',
+    origin: 'app://www.fake',
+    isPrivate: true
   };
 
   var fakeContextMenuEvent = {
@@ -137,10 +149,12 @@ suite('system/BrowserContextMenu', function() {
   test('launch menu', function() {
     var app1 = new AppWindow(fakeAppConfig1);
     var md1 = new BrowserContextMenu(app1);
+    this.sinon.stub(app1, 'blur');
     var stubStopPropagation =
       this.sinon.stub(fakeContextMenuEvent, 'stopPropagation');
 
     md1.handleEvent(fakeContextMenuEvent);
+    assert.isTrue(app1.blur.called);
     assert.isTrue(stubStopPropagation.called);
     assert.isTrue(md1.element.classList.contains('visible'));
     assert.equal(
@@ -152,12 +166,24 @@ suite('system/BrowserContextMenu', function() {
       'url("' + fakeContextMenuEvent.detail.contextmenu.items[0].icon + '")');
   });
 
-  test('manually launch menu', function(done) {
-    var app1 = new AppWindow(fakeAppConfig1);
-    var md1 = new BrowserContextMenu(app1);
-    md1.showDefaultMenu().then(function() {
-      assert.isTrue(md1.element.classList.contains('visible'));
-      done();
+  suite('manually launch menu', function() {
+    var md1;
+
+    setup(function(done) {
+      var app1 = new AppWindow(fakeAppConfig1);
+      md1 = new BrowserContextMenu(app1);
+      md1.showDefaultMenu().then(function() {
+        done();
+      });
+    });
+
+    test('Conext Menu is shown', function() {
+      assert.isTrue(md1.isShown());
+    });
+
+    test('Conext Menu is not shown', function() {
+      md1.hide();
+      assert.isFalse(md1.isShown());
     });
   });
 
@@ -218,6 +244,15 @@ suite('system/BrowserContextMenu', function() {
     }
   });
 
+  test('newWindow() - private browser', function() {
+    var app1 = new AppWindow(fakePrivateConfig);
+    var md1 = new BrowserContextMenu(app1);
+    md1.newWindow('http://search.gaiamobile.org/manifest.webapp', true);
+
+    var app = MockAppWindowHelper.mLatest;
+    assert.equal(app.isPrivate, true);
+  });
+
   test('openUrl()', function() {
     var app1 = new AppWindow(fakeAppConfig1);
     var md1 = new BrowserContextMenu(app1);
@@ -226,6 +261,17 @@ suite('system/BrowserContextMenu', function() {
     assert.equal(MozActivity.calls[0].name, 'view');
     assert.equal(MozActivity.calls[0].data.type, 'url');
     assert.equal(MozActivity.calls[0].data.url, 'http://example.com');
+    assert.ok(!MozActivity.calls[0].data.isPrivate);
   });
 
+  test('openUrl() - private browser', function() {
+    var app1 = new AppWindow(fakeAppConfig1);
+    var md1 = new BrowserContextMenu(app1);
+    md1.openUrl('http://example.com', true);
+    assert.equal(MozActivity.calls.length, 1);
+    assert.equal(MozActivity.calls[0].name, 'view');
+    assert.equal(MozActivity.calls[0].data.type, 'url');
+    assert.equal(MozActivity.calls[0].data.isPrivate, true);
+    assert.equal(MozActivity.calls[0].data.url, 'http://example.com');
+  });
 });

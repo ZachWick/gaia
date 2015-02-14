@@ -42,6 +42,7 @@ requireApp('communications/contacts/test/unit/mock_fb.js');
 requireApp('communications/contacts/test/unit/mock_extfb.js');
 requireApp('communications/contacts/test/unit/mock_activities.js');
 requireApp('communications/contacts/test/unit/helper.js');
+requireApp('communications/contacts/js/utilities/extract_params.js');
 
 require('/shared/test/unit/mocks/mock_contact_photo_helper.js');
 
@@ -67,7 +68,6 @@ var _ = function(key) { return key; },
     favoriteMessage,
     detailsInner,
     TAG_OPTIONS,
-    dom,
     Contacts,
     realContacts,
     realFb,
@@ -164,7 +164,7 @@ suite('Render contact', function() {
     editContactButton = dom.querySelector('#edit-contact-button');
     cover = dom.querySelector('#cover-img');
     detailsInner = dom.querySelector('#contact-detail-inner');
-    favoriteMessage = dom.querySelector('#toggle-favorite').children[0];
+    favoriteMessage = dom.querySelector('#toggle-favorite');
     header = dom.querySelector('#details-view-header');
 
     fbButtons = [
@@ -310,6 +310,8 @@ suite('Render contact', function() {
       assert.include(container.innerHTML, 'social-template');
       assert.isFalse(container.querySelector('#link_button').
                     classList.contains('hide'));
+      assert.isFalse(container.querySelector('#share_button').
+                    classList.contains('hide'));
       assert.isTrue(container.
                        querySelector('#profile_button').
                        classList.contains('hide')
@@ -338,6 +340,11 @@ suite('Render contact', function() {
                        classList.contains('hide')
       );
 
+      assert.isTrue(container.
+                       querySelector('#share_button').
+                       classList.contains('hide')
+      );
+
       window.fb.setIsFbContact(false);
     });
 
@@ -359,7 +366,7 @@ suite('Render contact', function() {
 
       subject.render(null, TAG_OPTIONS);
 
-      assertFbButtons(fbButtons, 'present', 'disabled');
+      assertFbButtons(fbButtons, 'present');
     });
 
     test('FB Contact. Device is online', function() {
@@ -609,6 +616,20 @@ suite('Render contact', function() {
     });
   });
 
+  suite('Render in read only mode', function() {
+    setup(function() {
+      subject.render(null, TAG_OPTIONS, true);
+    });
+
+    test('> editing button is disabled if we are in read only', function() {
+      assert.isTrue(editContactButton.classList.contains('hide'));
+    });
+
+    test('> link and share buttons are disabled in reado only', function() {
+      assert.isTrue(socialTemplate.classList.contains('hide'));
+    });
+  });
+
   suite('Render photos', function() {
     test('without photo', function() {
       subject.render(null, TAG_OPTIONS);
@@ -641,7 +662,7 @@ suite('Render contact', function() {
       subject.setContact(contact);
       var observer = new MutationObserver(function() {
         assert.isTrue(contactDetails.classList.contains('up'));
-        // assert.include worked only for string and arrays!! 
+        // assert.include worked only for string and arrays!!
         // in new version chaijs fail
         //assert.include(dom.innerHTML, contact.photo[0]);
 
@@ -708,6 +729,19 @@ suite('Render contact', function() {
       ActivityHandler.activityName = 'view';
     });
 
+    suite('back_to_previous_tab set', function() {
+      setup(function() {
+        window.location.hash = '#nothing?back_to_previous_tab=1';
+      });
+      teardown(function() {
+        window.location.hash = '';
+      });
+
+      test('> should not navigate back', function() {
+        triggerEvent(header, 'action');
+        sinon.assert.notCalled(Contacts.navigation.back);
+      });
+    });
   });
 
 });

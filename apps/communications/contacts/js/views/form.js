@@ -12,6 +12,7 @@
 /* global TAG_OPTIONS */
 /* global ActionMenu */
 /* global ICEData */
+/* global MergeHelper */
 
 var contacts = window.contacts || {};
 
@@ -436,7 +437,10 @@ contacts.Form = (function() {
   var onNewFieldClicked = function onNewFieldClicked(evt) {
     var type = evt.target.dataset.fieldType;
     evt.preventDefault();
-    contacts.Form.insertField(type);
+    contacts.Form.insertField(type, null, [
+      'inserted',
+      'displayed'
+    ]);
     textFieldsCache.clear();
     // For dates only two instances
     if (type === 'date') {
@@ -474,7 +478,23 @@ contacts.Form = (function() {
     }
   }
 
-  var insertField = function insertField(type, object) {
+  /**
+   * We cannot relay on the counter, but in the next id after the
+   * last field.
+   * See bug 1113134 for related explanation.
+   */
+  function getNextTemplateId(container) {
+    var nodes = container.childNodes;
+    if (!nodes || nodes.length === 0) {
+      return 0;
+    }
+
+    var lastNode = nodes[nodes.length - 1];
+    var value = lastNode.dataset.index;
+    return value ? parseInt(value) + 1 : 0;
+  }
+
+  var insertField = function insertField(type, object, targetClasses) {
     if (!type || !configs[type]) {
       console.error('Inserting field with unknown type');
       return;
@@ -516,7 +536,7 @@ contacts.Form = (function() {
         infoFromFB = true;
       }
     });
-    currField.i = counters[type];
+    currField.i = getNextTemplateId(container);
 
     var rendered = utils.templates.render(template, currField);
     // Controlling that if no tel phone is present carrier field is disabled
@@ -569,6 +589,12 @@ contacts.Form = (function() {
     var boxTitle = rendered.querySelector('legend.action');
     if (boxTitle) {
       boxTitle.addEventListener('click', onGoToSelectTag);
+    }
+
+    // This will happen when the fields are added by the user on demand
+    if (Array.isArray(targetClasses)) {
+      rendered.classList.add(targetClasses[0]);
+      window.setTimeout(() => rendered.classList.add(targetClasses[1]));
     }
 
     container.classList.remove('empty');
@@ -927,9 +953,8 @@ contacts.Form = (function() {
       }
     };
 
-    LazyLoader.load(['/shared/js/contacts/contacts_merger.js',
-                     '/shared/js/contacts/merger_adapter.js'], function() {
-      contacts.Merger.merge(contact, list, callbacks);
+    LazyLoader.load('/contacts/js/utilities/merge_helper.js', function() {
+      MergeHelper.merge(contact, list).then(callbacks.success, callbacks.error);
     });
   };
 
@@ -1313,13 +1338,22 @@ contacts.Form = (function() {
     return out;
   };
 
-  function photoAction() {
-    var hasPhoto = getCurrentPhoto() !== null;
+  function canRemovePhoto() {
+    var out = getCurrentPhoto() !== null;
 
-    if (!hasPhoto) {
-      pickImage();
-    } else {
+    if (fb.isFbContact(currentContact)) {
+      out = Array.isArray(deviceContact.photo) && deviceContact.photo[0];
+    }
+
+    return out;
+  }
+
+  function photoAction() {
+    if (canRemovePhoto()) {
       removeOrUpdatePhoto();
+    }
+    else {
+      pickImage();
     }
   }
 
@@ -1336,11 +1370,21 @@ contacts.Form = (function() {
 
   function removePhoto() {
     currentPhoto = null;
+    // If photo is removed, the FB photo of a contact is always restoredf
+    if (fb.isFbContact(currentContact)) {
+      // The local contact now does not have a photo
+      deviceContact.photo = null;
+      var fbPhoto = ContactPhotoHelper.getFullResolution(fbContact);
+      Contacts.updatePhoto(fbPhoto, thumb);
+    }
+    else {
+      thumbAction.classList.remove('with-photo');
+      Contacts.updatePhoto(null, thumb);
+    }
+
     if (!emptyForm()) {
       saveButton.removeAttribute('disabled');
     }
-    thumbAction.classList.remove('with-photo');
-    Contacts.updatePhoto(null, thumb);
   }
 
   var pickImage = function pickImage() {
@@ -1366,6 +1410,8 @@ contacts.Form = (function() {
                  function(resized) {
                    Contacts.updatePhoto(resized, thumb);
                    currentPhoto = resized;
+                   // We temporarily mark that there is a local photo chosen
+                   deviceContact.photo = [currentPhoto];
                  });
     };
 

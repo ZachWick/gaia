@@ -11,9 +11,9 @@ var utils = require('./utils');
 // For now, we would not allow multiple apps with the same appName.
 function getManifestURL(webappsMapping, appName) {
   if (!webappsMapping[appName]) {
-    throw new Error(
-      'Can not find application ' + appName + 'in webappsMapping'
-    );
+    utils.log('keyboard-layouts', 'Can not find application ' + appName +
+      ' in webappsMapping');
+    return '';
   }
 
   return webappsMapping[appName].manifestURL;
@@ -73,10 +73,17 @@ function genDefaultLayouts(config, webappsMapping, allLayouts) {
   });
 
   // Write the result to file
+  let content = JSON.stringify(result, null, 2);
   let resultFile = utils.resolve(
     utils.joinPath('shared', 'resources', 'keyboard_layouts.json'),
     config.GAIA_DIR);
-  utils.writeContent(resultFile, JSON.stringify(result, null, 2));
+  if (resultFile.exists()) {
+    let prev = utils.getFileContent(resultFile);
+    if (prev === content) {
+      return;
+    }
+  }
+  utils.writeContent(resultFile, content);
 }
 
 function execute(options) {

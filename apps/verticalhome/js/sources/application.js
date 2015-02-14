@@ -3,10 +3,16 @@
 
 (function(exports) {
 
+  // XXX: This should not be hard-coded, but should come from the home screen
+  // JSON configuration file.
+  var blacklist = [
+    'app://privacy-panel.gaiamobile.org'
+  ];
+
   var appMgr = navigator.mozApps.mgmt;
   var apps = null;
 
-  window.mozPerformance.timing.mozHomescreenStart = Date.now();
+  window.performance.mark('homescreenStart@System');
 
   appMgr.getAll().onsuccess = function onsuccess(event) {
     apps = event.target.result;
@@ -75,13 +81,13 @@
       // There is a last divider that is always in the list, but not rendered
       // unless in edit mode.
       // Remove this divider, append the app, then re-append the divider.
-      var lastDivider = app.grid.removeUntilDivider();
       this.addIconToGrid(application);
       var svApp = configurator.getSingleVariantApp(application.manifestURL);
       var lastElem = app.grid.getIndexLastIcon();
       if (configurator.isSimPresentOnFirstBoot && svApp &&
           svApp.location < lastElem &&
           !this.isPreviouslyInstalled(application.manifestURL)) {
+        app.grid.popDivider();
         app.grid.removeNonVisualElements();
         lastElem = app.grid.getIndexLastIcon();
         app.grid.moveTo(lastElem, svApp.location);
@@ -89,7 +95,6 @@
         this.addPreviouslyInstalledSvApp(application.manifestURL);
         app.itemStore.savePrevInstalledSvApp(this.svPreviouslyInstalledApps);
       }
-      app.grid.add(lastDivider);
 
       app.grid.render();
       app.itemStore.deferredSave(app.grid.getItems());
@@ -189,6 +194,11 @@
       }
 
       toAdd.forEach(function _toAdd(newApp) {
+        // Do not add blacklisted apps to the grid.
+        if (blacklist.indexOf(newApp.app.origin) !== -1) {
+          return;
+        }
+
         this.addIconToGrid(newApp.app);
       }, this);
 
@@ -203,9 +213,7 @@
       var appObject = this.mapToApp({
         manifestURL: application.manifestURL
       });
-      var lastDivider = app.grid.removeUntilDivider();
-      app.grid.add(appObject);
-      app.grid.add(lastDivider);
+      app.grid.appendItemToExpandedGroup(appObject);
       app.grid.render();
     },
 

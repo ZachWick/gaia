@@ -1,9 +1,9 @@
 /* globals FtuLauncher, MockL10n, MockMobileOperator, MockLayoutManager,
            MockNavigatorMozMobileConnections, MockNavigatorMozTelephony,
            MockSettingsListener, MocksHelper, MockSIMSlot, MockSIMSlotManager,
-           MockSystem, MockTouchForwarder, StatusBar, System,
-           MockNfcManager, MockMobileconnection, MockAppWindowManager,
-           UtilityTray */
+           MockService, StatusBar, Service,
+           MockMobileconnection, MockAppWindowManager,
+           MockNavigatorBattery, UtilityTray, MockAppWindow, layoutManager */
 
 'use strict';
 
@@ -14,28 +14,28 @@ require(
 require('/shared/test/unit/mocks/mock_icc_helper.js');
 require('/shared/test/unit/mocks/mock_navigator_moz_telephony.js');
 require('/shared/test/unit/mocks/mock_l10n.js');
-require('/shared/test/unit/mocks/mock_system.js');
+require('/shared/test/unit/mocks/mock_service.js');
 require('/shared/test/unit/mocks/mock_simslot.js');
 require('/shared/test/unit/mocks/mock_simslot_manager.js');
 require('/shared/test/unit/mocks/mock_l10n.js');
 require('/test/unit/mock_app_window_manager.js');
 require('/test/unit/mock_ftu_launcher.js');
-require('/test/unit/mock_nfc_manager.js');
 require('/test/unit/mock_touch_forwarder.js');
-require('/test/unit/mock_sim_pin_dialog.js');
 require('/test/unit/mock_utility_tray.js');
 require('/test/unit/mock_layout_manager.js');
+require('/test/unit/mock_navigator_battery.js');
+require('/test/unit/mock_app_window.js');
 
 var mocksForStatusBar = new MocksHelper([
-  'FtuLauncher',
   'SettingsListener',
   'MobileOperator',
   'SIMSlotManager',
-  'AppWindowManager',
-  'TouchForwarder',
-  'SimPinDialog',
   'UtilityTray',
-  'LayoutManager'
+  'LayoutManager',
+  'NavigatorBattery',
+  'AppWindow',
+  'Service',
+  'FtuLauncher'
 ]).init();
 
 suite('system/Statusbar', function() {
@@ -46,7 +46,7 @@ suite('system/Statusbar', function() {
       fakeStatusBarConnections, fakeStatusBarCallForwardings, fakeStatusBarTime,
       fakeStatusBarLabel, fakeStatusBarBattery;
   var realMozL10n, realMozMobileConnections, realMozTelephony, fakeIcons = [],
-      realNfcManager, realLayoutManager;
+      realLayoutManager, realNavigatorBattery;
 
   function prepareDOM() {
     for (var i = 1; i < mobileConnectionCount; i++) {
@@ -111,7 +111,7 @@ suite('system/Statusbar', function() {
   setup(function(done) {
     this.sinon.useFakeTimers();
 
-    window.System = MockSystem;
+    window.Service = MockService;
     realMozL10n = navigator.mozL10n;
     navigator.mozL10n = MockL10n;
     realMozMobileConnections = navigator.mozMobileConnections;
@@ -120,10 +120,12 @@ suite('system/Statusbar', function() {
     navigator.mozTelephony = MockNavigatorMozTelephony;
     realLayoutManager = window.layoutManager;
     window.layoutManager = MockLayoutManager;
+    realNavigatorBattery = navigator.battery;
+    Object.defineProperty(navigator, 'battery', {
+      writable: true
+    });
+    navigator.battery = MockNavigatorBattery;
 
-    realNfcManager = window.nfcManager;
-    window.nfcManager = new MockNfcManager();
-    sinon.spy(window.nfcManager, 'isActive');
     window.appWindowManager = new MockAppWindowManager();
 
     prepareDOM();
@@ -184,14 +186,14 @@ suite('system/Statusbar', function() {
     fakeStatusBarNode.parentNode.removeChild(fakeStatusBarNode);
     MockNavigatorMozTelephony.mTeardown();
     MockNavigatorMozMobileConnections.mTeardown();
-    System.locked = false;
-    System.currentApp = null;
+    MockNavigatorBattery.mTeardown();
+    Service.locked = false;
+    Service.currentApp = null;
     navigator.mozL10n = realMozL10n;
     navigator.mozMobileConnections = realMozMobileConnections;
     navigator.mozTelephony = realMozTelephony;
     window.layoutManager = realLayoutManager;
-    window.nfcManager.isActive.restore();
-    window.nfcManager = realNfcManager;
+    navigator.battery = realNavigatorBattery;
   });
 
   suite('airplane mode icon', function() {
@@ -206,6 +208,18 @@ suite('system/Statusbar', function() {
       assert.equal(Object.keys(fakeIcons.signals).length,
         mobileConnectionCount);
       assert.equal(Object.keys(fakeIcons.data).length, mobileConnectionCount);
+    });
+  });
+
+  suite('Emergency Call', function() {
+    test('Statechanged event should update the notification', function() {
+      this.sinon.stub(StatusBar, 'updateEmergencyCbNotification');
+      var evt = new CustomEvent('emergencycallbackstatechanged', {
+        detail: true
+      });
+      StatusBar.handleEvent(evt);
+      assert.isTrue(StatusBar.updateEmergencyCbNotification
+            .calledWith(true));
     });
   });
 
@@ -313,7 +327,7 @@ suite('system/Statusbar', function() {
         element: document.createElement('div')
       };
 
-      System.currentApp = app;
+      Service.currentApp = app;
       StatusBar.screen = document.createElement('div');
     });
     teardown(function() {
@@ -321,6 +335,53 @@ suite('system/Statusbar', function() {
     });
     test('Active app is fullscreen', function() {
       assert.equal(StatusBar.height, 0);
+    });
+  });
+
+  suite('Statusbar should reflect fullscreen state', function() {
+    teardown(function() {
+      StatusBar.element.classList.remove('fullscreen');
+      StatusBar.element.classList.remove('fullscreen-layout');
+    });
+
+    test('Launch a non-fullscreen app', function() {
+      var app = new MockAppWindow();
+      this.sinon.stub(app, 'isFullScreen').returns(false);
+      StatusBar.handleEvent(new CustomEvent('appopened', { detail:app }));
+      assert.isFalse(StatusBar.element.classList.contains('fullscreen'));
+    });
+
+    test('Launch a fullscreen app', function() {
+      var app = new MockAppWindow();
+      this.sinon.stub(app, 'isFullScreen').returns(true);
+      StatusBar.handleEvent(new CustomEvent('appopened', { detail:app }));
+      assert.isTrue(StatusBar.element.classList.contains('fullscreen'));
+    });
+
+    test('Launch a fullscreen-layout app', function() {
+      var app = new MockAppWindow();
+      this.sinon.stub(app, 'isFullScreenLayout').returns(true);
+      StatusBar.handleEvent(new CustomEvent('appopened', { detail:app }));
+      assert.isTrue(StatusBar.element.classList.contains('fullscreen-layout'));
+    });
+
+    test('Launch a non-fullscreen-layout app', function() {
+      var app = new MockAppWindow();
+      this.sinon.stub(app, 'isFullScreenLayout').returns(false);
+      StatusBar.handleEvent(new CustomEvent('appopened', { detail:app }));
+      assert.isFalse(StatusBar.element.classList.contains('fullscreen-layout'));
+    });
+
+    test('Back to home should remove fullscreen state', function() {
+      var app = new MockAppWindow();
+      this.sinon.stub(app, 'isFullScreen').returns(true);
+      this.sinon.stub(app, 'isFullScreenLayout').returns(true);
+      StatusBar.handleEvent(new CustomEvent('appopened', { detail:app }));
+      var home = new MockAppWindow();
+      StatusBar.handleEvent(new CustomEvent('homescreenopened',
+        { detail: home }));
+      assert.isFalse(StatusBar.element.classList.contains('fullscreen'));
+      assert.isFalse(StatusBar.element.classList.contains('fullscreen-layout'));
     });
   });
 
@@ -374,7 +435,7 @@ suite('system/Statusbar', function() {
           return app;
         }
       };
-      System.currentApp = app;
+      Service.currentApp = app;
       StatusBar.clock.stop();
       StatusBar.screen = document.createElement('div');
     });
@@ -382,20 +443,18 @@ suite('system/Statusbar', function() {
       StatusBar.screen = null;
     });
     test('first launch', function() {
-      System.locked = true;
+      Service.locked = true;
       StatusBar.init();
       StatusBar.finishInit();
       assert.equal(StatusBar.clock.timeoutID, null);
       assert.equal(StatusBar.icons.time.hidden, true);
     });
     test('lock', function() {
-      System.locked = true;
-      var currentApp = {};
+      Service.locked = true;
       var setAppearanceStub = this.sinon.stub(StatusBar, 'setAppearance');
-      var evt = new CustomEvent('lockscreen-appopened', {detail: currentApp});
+      var evt = new CustomEvent('lockscreen-appopened');
       StatusBar.handleEvent(evt);
       assert.isTrue(setAppearanceStub.called);
-      assert.isTrue(setAppearanceStub.calledWith(currentApp));
       assert.equal(StatusBar.clock.timeoutID, null);
       assert.equal(StatusBar.icons.time.hidden, true);
     });
@@ -413,10 +472,12 @@ suite('system/Statusbar', function() {
       StatusBar.handleEvent(evt);
       assert.notEqual(StatusBar.clock.timeoutID, null);
       assert.equal(StatusBar.icons.time.hidden, false);
+      assert.equal(StatusBar.element.classList.contains('maximized'), true);
+      assert.equal(StatusBar.element.classList.contains('light'), false);
     });
     test('attentionsceen hide', function() {
       // Test this when lockscreen is off.
-      System.locked = false;
+      Service.locked = false;
       var evt = new CustomEvent('attentionclosed');
       StatusBar.handleEvent(evt);
       assert.notEqual(StatusBar.clock.timeoutID, null);
@@ -434,7 +495,7 @@ suite('system/Statusbar', function() {
       assert.equal(StatusBar.icons.time.hidden, false);
     });
     test('moztime change while lockscreen is unlocked', function() {
-      System.locked = false;
+      Service.locked = false;
       var evt = new CustomEvent('moztimechange');
       StatusBar.handleEvent(evt);
       this.sinon.clock.tick();
@@ -456,7 +517,7 @@ suite('system/Statusbar', function() {
           screenEnabled: true
         }
       });
-      System.locked = false;
+      Service.locked = false;
       StatusBar.handleEvent(evt);
       assert.notEqual(StatusBar.clock.timeoutID, null);
       assert.equal(StatusBar.icons.time.hidden, false);
@@ -467,7 +528,7 @@ suite('system/Statusbar', function() {
           screenEnabled: true
         }
       });
-      System.locked = true;
+      Service.locked = true;
       StatusBar.handleEvent(evt);
       assert.equal(StatusBar.clock.timeoutID, null);
       assert.equal(StatusBar.icons.time.hidden, true);
@@ -1487,21 +1548,21 @@ suite('system/Statusbar', function() {
 
   suite('fullscreen mode >', function() {
     function forgeTouchEvent(type, x, y) {
-        var touch = document.createTouch(window, null, 42, x, y,
-                                         x, y, x, y,
-                                         0, 0, 0, 0);
-        var touchList = document.createTouchList(touch);
-        var touches = (type == 'touchstart' || type == 'touchmove') ?
-                           touchList : null;
-        var changed = (type == 'touchmove') ?
-                           null : touchList;
+      var touch = document.createTouch(window, null, 42, x, y,
+                                       x, y, x, y,
+                                       0, 0, 0, 0);
+      var touchList = document.createTouchList(touch);
+      var touches = (type == 'touchstart' || type == 'touchmove') ?
+                         touchList : null;
+      var changed = (type == 'touchmove') ?
+                         null : touchList;
 
-        var e = document.createEvent('TouchEvent');
-        e.initTouchEvent(type, true, true,
-                         null, null, false, false, false, false,
-                         touches, null, changed);
+      var e = document.createEvent('TouchEvent');
+      e.initTouchEvent(type, true, true,
+                       null, null, false, false, false, false,
+                       touches, null, changed);
 
-        return e;
+      return e;
     }
 
     function forgeMouseEvent(type, x, y) {
@@ -1527,37 +1588,9 @@ suite('system/Statusbar', function() {
 
     var app;
     setup(function() {
-      app = {
-        isFullScreen: function() {
-          return true;
-        },
-        titleBar: {
-          element: document.createElement('div')
-        },
-        iframe: document.createElement('iframe'),
-        getTopMostWindow: function() {
-          return app;
-        },
-        config: {},
-        _element: null,
-        get element() {
-          if (!this._element) {
-            var element = document.createElement('div');
-            var title = document.createElement('div');
-            title.classList.add('titlebar');
-            element.appendChild(title);
-
-            var chrome = document.createElement('div');
-            chrome.className = 'chrome';
-            element.appendChild(chrome);
-            this._element = element;
-          }
-
-          return this._element;
-        }
-      };
-
-      System.currentApp = app;
+      app = new MockAppWindow();
+      MockService.mTopMostWindow = app;
+      this.sinon.stub(app, 'handleStatusbarTouch');
       this.sinon.stub(StatusBar.element, 'getBoundingClientRect').returns({
         height: 10
       });
@@ -1566,21 +1599,9 @@ suite('system/Statusbar', function() {
     });
 
     suite('Revealing the StatusBar >', function() {
-      var transitionEndSpy;
-      var element;
       setup(function() {
         StatusBar._cacheHeight = 24;
-        element = System.currentApp.element
-                                                 .querySelector('.titlebar');
-        transitionEndSpy = this.sinon.spy(element, 'addEventListener');
       });
-
-      function assertStatusBarReleased() {
-        assert.equal(StatusBar.element.style.transform, '');
-        assert.equal(StatusBar.element.style.transition, '');
-
-        assert.isFalse(element.classList.contains('dragged'));
-      }
 
       teardown(function() {
         this.sinon.clock.tick(10000);
@@ -1588,40 +1609,24 @@ suite('system/Statusbar', function() {
         StatusBar.element.style.transform = '';
       });
 
-      test('it should stop the propagation of the events at first', function() {
-        var fakeEvt = {
-          stopImmediatePropagation: function() {},
-          preventDefault: function() {},
-          type: 'fake'
-        };
-        this.sinon.spy(fakeEvt, 'stopImmediatePropagation');
-        StatusBar.panelHandler(fakeEvt);
-        sinon.assert.calledOnce(fakeEvt.stopImmediatePropagation);
-      });
-
       test('it should translate the statusbar on touchmove', function() {
         fakeDispatch('touchstart', 100, 0);
-        fakeDispatch('touchmove', 100, 5);
-        var transform = 'translateY(calc(5px - 100%))';
-        assert.equal(element.style.transform, transform);
+        var evt = fakeDispatch('touchmove', 100, 5);
+        assert.isTrue(app.handleStatusbarTouch.calledWith(evt, 24));
         fakeDispatch('touchend', 100, 5);
       });
 
-      test('it should set the dragged class on touchstart', function() {
-        fakeDispatch('touchstart', 100, 0);
-        assert.isFalse(element.classList.contains('dragged'));
-        fakeDispatch('touchmove', 100, 24);
-        fakeDispatch('touchend', 100, 25);
-        assert.isTrue(element.classList.contains('dragged'));
+      test('it should bypass touchstart event', function() {
+        var evt = fakeDispatch('touchstart', 100, 0);
+        assert.isTrue(app.handleStatusbarTouch.calledWith(evt, 24));
       });
 
       test('it should not translate the statusbar more than its height',
       function() {
         fakeDispatch('touchstart', 100, 0);
         fakeDispatch('touchmove', 100, 5);
-        fakeDispatch('touchmove', 100, 15);
-        var transform = 'translateY(calc(15px - 100%))';
-        assert.equal(element.style.transform, transform);
+        var evt = fakeDispatch('touchmove', 100, 15);
+        assert.isTrue(app.handleStatusbarTouch.calledWith(evt, 24));
         fakeDispatch('touchend', 100, 15);
       });
 
@@ -1647,9 +1652,7 @@ suite('system/Statusbar', function() {
         fakeDispatch('touchstart', 100, 0);
         fakeDispatch('touchmove', 100, 100);
 
-        var titleEl = System.currentApp.element
-                                       .querySelector('.titlebar');
-        assert.equal(titleEl.style.transform, '');
+        assert.isFalse(app.handleStatusbarTouch.called);
         FtuLauncher.mIsRunning = false;
       });
 
@@ -1658,139 +1661,8 @@ suite('system/Statusbar', function() {
         fakeDispatch('touchstart', 100, 0);
         fakeDispatch('touchmove', 100, 100);
 
-        var titleEl = System.currentApp.element
-                                       .querySelector('.titlebar');
-        assert.equal(titleEl.style.transform, '');
+        assert.isFalse(app.handleStatusbarTouch.called);
         UtilityTray.active = false;
-      });
-
-
-      suite('after the gesture', function() {
-        suite('when the StatusBar is not fully displayed', function() {
-          setup(function() {
-            fakeDispatch('touchstart', 100, 0);
-            fakeDispatch('touchmove', 100, 5);
-            fakeDispatch('touchend', 100, 5);
-          });
-
-          test('it should hide it right away', function() {
-            assertStatusBarReleased();
-          });
-        });
-
-        suite('when the StatusBar is fully displayed', function() {
-          setup(function() {
-            fakeDispatch('touchstart', 100, 0);
-            fakeDispatch('touchmove', 100, 5);
-            fakeDispatch('touchmove', 100, 24);
-            fakeDispatch('touchend', 100, 24);
-          });
-
-          test('it should not hide it right away', function() {
-            var titleEl = System.currentApp.element
-                                          .querySelector('.titlebar');
-            assert.equal(titleEl.style.transform, '');
-            assert.equal(titleEl.style.transition, '');
-            assert.ok(titleEl.classList.contains('dragged'));
-          });
-
-          test('but after 5 seconds', function() {
-            this.sinon.clock.tick(5000);
-            assertStatusBarReleased();
-          });
-
-          test('or if the user interacts with the app', function() {
-            // We're faking a touchstart event on the app iframe
-            var iframe = StatusBar._touchForwarder.destination;
-            StatusBar._touchForwarder.destination = window;
-
-            var e = forgeTouchEvent('touchstart', 100, 100);
-            window.dispatchEvent(e);
-
-            assertStatusBarReleased();
-            StatusBar._touchForwarder.destination = iframe;
-          });
-        });
-      });
-    });
-
-    test('it should prevent default on mouse events keep the focus on the app',
-    function() {
-      var mousedown = fakeDispatch('mousedown', 100, 0);
-      var mousemove = fakeDispatch('mousemove', 100, 2);
-      var mouseup = fakeDispatch('mouseup', 100, 2);
-
-      assert.isTrue(mousedown.defaultPrevented);
-      assert.isTrue(mousemove.defaultPrevented);
-      assert.isTrue(mouseup.defaultPrevented);
-    });
-
-    suite('Touch forwarding in fullscreen >', function() {
-      var forwardSpy;
-
-      setup(function() {
-        StatusBar._cacheHeight = 24;
-        forwardSpy = this.sinon.spy(MockTouchForwarder.prototype, 'forward');
-      });
-
-      test('it should prevent default on all touch events to prevent reflows',
-      function() {
-        var touchstart = fakeDispatch('touchstart', 100, 0);
-        var touchmove = fakeDispatch('touchmove', 100, 2);
-        var touchend = fakeDispatch('touchend', 100, 2);
-
-        assert.isTrue(touchstart.defaultPrevented);
-        assert.isTrue(touchmove.defaultPrevented);
-        assert.isTrue(touchend.defaultPrevented);
-      });
-
-      test('it should set the destination of the TouchForwarder on touchstart',
-      function() {
-        fakeDispatch('touchstart', 100, 0);
-        assert.equal(StatusBar._touchForwarder.destination, app.iframe);
-        fakeDispatch('touchend', 100, 0);
-      });
-
-      test('it should forward taps to the app', function() {
-        var touchstart = fakeDispatch('touchstart', 100, 0);
-        fakeDispatch('touchmove', 100, 2);
-        var touchend = fakeDispatch('touchend', 100, 2);
-
-        assert.isTrue(forwardSpy.calledTwice);
-        var call = forwardSpy.firstCall;
-        assert.equal(call.args[0], touchstart);
-        call = forwardSpy.getCall(1);
-        assert.equal(call.args[0], touchend);
-      });
-
-      suite('if it\'s not a tap and the statusbar is not fully displayed',
-      function() {
-        test('it should not forward any events', function() {
-          fakeDispatch('touchstart', 100, 0);
-          fakeDispatch('touchmove', 100, 8);
-          fakeDispatch('touchend', 100, 8);
-
-          assert.isTrue(forwardSpy.notCalled);
-        });
-      });
-
-      test('it should forward touchmove once the statusbar is shown',
-      function() {
-        var touchstart = fakeDispatch('touchstart', 100, 0);
-        fakeDispatch('touchmove', 100, 6);
-        var secondMove = fakeDispatch('touchmove', 100, 26);
-        var thirdMove = fakeDispatch('touchmove', 100, 28);
-        var touchend = fakeDispatch('touchend', 100, 2);
-
-        assert.equal(forwardSpy.callCount, 4);
-        var call = forwardSpy.firstCall;
-        assert.equal(call.args[0], touchstart);
-        call = forwardSpy.getCall(1);
-        assert.equal(call.args[0], secondMove);
-        call = forwardSpy.getCall(2);
-        assert.equal(call.args[0], thirdMove);
-        call = forwardSpy.getCall(3);
-        assert.equal(call.args[0], touchend);
       });
     });
   });
@@ -1805,9 +1677,11 @@ suite('system/Statusbar', function() {
     });
 
     test('checks initial state from nfcManager', function() {
+      var stubServiceQuery = this.sinon.stub(MockService, 'query');
+
       StatusBar.init();
       StatusBar.finishInit();
-      assert.isTrue(window.nfcManager.isActive.called);
+      assert.isTrue(stubServiceQuery.calledWith('NfcManager.isActive'));
     });
 
     test('NFC is off', function() {
@@ -2022,36 +1896,55 @@ suite('system/Statusbar', function() {
     });
   });
 
+  suite('_updateMinimizedStatusBarWidth', function() {
+    var app;
+    setup(function() {
+      app = getMockApp();
+      Service.currentApp = app;
+    });
+
+    test('does not update minimizedWidth when maximized', function() {
+      var unchangedValue = '#';
+      StatusBar._minimizedStatusBarWidth = unchangedValue;
+      this.sinon.stub(StatusBar, '_updateIconVisibility');
+      Service.currentApp = app;
+      StatusBar._updateMinimizedStatusBarWidth();
+      assert.equal(unchangedValue, StatusBar._minimizedStatusBarWidth);
+      assert.isTrue(StatusBar._updateIconVisibility.calledOnce);
+    });
+
+    test('minimizedWidth when minimized when rocketbar', function() {
+      var mockedWidth = 100;
+      this.sinon.stub(app._topWindow.appChrome, 'isMaximized')
+        .returns(false);
+      layoutManager.width = 123;
+      app._topWindow.appChrome.element = getMockChrome(mockedWidth);
+      StatusBar._updateMinimizedStatusBarWidth();
+      var expectedValue = layoutManager.width - mockedWidth - 5 - 3;
+      assert.equal(StatusBar._minimizedStatusBarWidth, expectedValue);
+    });
+
+    test('minimizedWidth when minimized without rocketbar', function() {
+      var mockedWidth = 1234;
+      this.sinon.stub(app._topWindow.appChrome, 'isMaximized')
+        .returns(false);
+      this.sinon.stub(StatusBar, '_getMaximizedStatusBarWidth')
+        .returns(mockedWidth);
+      Service.currentApp = app;
+      StatusBar._updateMinimizedStatusBarWidth();
+      assert.equal(StatusBar._minimizedStatusBarWidth, mockedWidth);
+    });
+  });
+
   suite('setAppearance', function() {
+    var app;
     setup(function() {
       StatusBar.element.classList.remove('light');
       StatusBar.element.classList.remove('maximized');
+      app = getMockApp();
     });
 
     test('setAppearance light and maximized', function() {
-      var app = {
-        _topWindow: {
-          appChrome: {
-            useLightTheming: function useLightTheming() {
-              return true;
-            },
-            isMaximized: function isMaximized() {
-              return true;
-            }
-          }
-        },
-        appChrome: {
-          isMaximized: function isMaximized() {
-            return true;
-          }
-        },
-        getTopMostWindow: function getTopMostWindow() {
-          return this._topWindow;
-        },
-        getBottomMostWindow: function getBottomMostWindow() {
-          return this;
-        }
-      };
       var spyTopUseLightTheming = this.sinon.spy(app._topWindow.appChrome,
                                                  'useLightTheming');
       var spyTopIsMaximized = this.sinon.spy(app._topWindow.appChrome,
@@ -2158,24 +2051,24 @@ suite('system/Statusbar', function() {
       var evt = new CustomEvent('lockscreen-appopened', {
         detail: lockscreenApp
       });
-      MockSystem.currentApp = app;
+      MockService.currentApp = app;
       StatusBar.handleEvent(evt);
     });
 
     teardown(function() {
       var evt = new CustomEvent('lockscreen-appclosing');
       StatusBar.handleEvent(evt);
-      MockSystem.currentApp = null;
+      MockService.currentApp = null;
     });
 
     test('should set the lockscreen icons color', function() {
-      assert.isTrue(StatusBar.element.classList.contains('light'));
+      assert.isFalse(StatusBar.element.classList.contains('light'));
       assert.isTrue(StatusBar.element.classList.contains('maximized'));
     });
 
     test('should do nothing when is locked', function() {
       StatusBar.setAppearance(app);
-      assert.isTrue(StatusBar.element.classList.contains('light'));
+      assert.isFalse(StatusBar.element.classList.contains('light'));
       assert.isTrue(StatusBar.element.classList.contains('maximized'));
     });
 
@@ -2271,19 +2164,46 @@ suite('system/Statusbar', function() {
       assert.isTrue(StatusBar.element.classList.contains('hidden'));
     }
 
+    function triggerEvent(event) {
+      // XXX: Use MockAppWindow instead
+      var currentApp = {
+        getTopMostWindow: function getTopMostWindow() {
+          return this._topWindow;
+        },
+        isFullScreen: function() {},
+        isFullScreenLayout: function() {}
+      };
+      Service.currentApp = currentApp;
+      var evt = new CustomEvent(event, {detail: currentApp});
+      StatusBar.element.classList.add('hidden');
+      StatusBar.handleEvent(evt);
+    }
+
     function testEventThatShows(event) {
+      triggerEvent(event);
+      assert.isTrue(setAppearanceStub.called);
+      assert.isTrue(setAppearanceStub.calledWith(Service.currentApp));
+      assert.isFalse(StatusBar.element.classList.contains('hidden'));
+    }
+
+    function testEventThatNotShowsIfSwipeDetected(event) {
       var currentApp = {
         getTopMostWindow: function getTopMostWindow() {
           return this._topWindow;
         }
       };
-      System.currentApp = currentApp;
+      Service.currentApp = currentApp;
       var evt = new CustomEvent(event, {detail: currentApp});
       StatusBar.element.classList.add('hidden');
       StatusBar.handleEvent(evt);
       assert.isTrue(setAppearanceStub.called);
       assert.isTrue(setAppearanceStub.calledWith(currentApp));
-      assert.isFalse(StatusBar.element.classList.contains('hidden'));
+      assert.isTrue(StatusBar.element.classList.contains('hidden'));
+    }
+
+    function dispatchEdgeSwipeEvent(event) {
+      var evt = new CustomEvent(event);
+      StatusBar.handleEvent(evt);
     }
 
     function testEventThatPause(event) {
@@ -2303,12 +2223,20 @@ suite('system/Statusbar', function() {
       assert.isFalse(StatusBar.isPaused());
     }
 
+    function testEventThatResumeIfNeeded(event) {
+      var evt = new CustomEvent(event);
+      StatusBar.handleEvent(evt);
+      assert.isTrue(resumeUpdateStub.called);
+      assert.isFalse(StatusBar.element.classList.contains('hidden'));
+    }
+
     setup(function() {
       app = {};
-      MockSystem.currentApp = app;
+      MockService.currentApp = app;
       setAppearanceStub = this.sinon.stub(StatusBar, 'setAppearance');
       pauseUpdateStub = this.sinon.stub(StatusBar, 'pauseUpdate');
       resumeUpdateStub = this.sinon.stub(StatusBar, 'resumeUpdate');
+      StatusBar._pausedForGesture = false;
     });
 
     test('stackchanged', function() {
@@ -2349,6 +2277,17 @@ suite('system/Statusbar', function() {
       testEventThatShows.bind(this)('appopened');
     });
 
+    test('appchromecollapsed', function() {
+      var stub = this.sinon.spy(StatusBar, '_updateMinimizedStatusBarWidth');
+      triggerEvent.bind(this)('appchromecollapsed');
+      assert.isTrue(stub.calledOnce);
+      assert.isTrue(setAppearanceStub.calledOnce);
+    });
+
+    test('appchromeexpanded', function() {
+      testEventThatShows.bind(this)('appchromeexpanded');
+    });
+
     test('apptitlestatechanged', function() {
       testEventThatShows.bind(this)('apptitlestatechanged');
     });
@@ -2356,6 +2295,12 @@ suite('system/Statusbar', function() {
     test('activityopened', function() {
       var stub = this.sinon.spy(StatusBar, '_updateMinimizedStatusBarWidth');
       testEventThatShows.bind(this)('activityopened');
+      assert.isTrue(stub.calledOnce);
+    });
+
+    test('activitydestroyed', function() {
+      var stub = this.sinon.spy(StatusBar, '_updateMinimizedStatusBarWidth');
+      triggerEvent('activitydestroyed');
       assert.isTrue(stub.calledOnce);
     });
 
@@ -2387,8 +2332,44 @@ suite('system/Statusbar', function() {
       testEventThatResume.bind(this)('utility-tray-overlayclosed');
     });
 
+    test('utility-tray-abortopen', function() {
+      testEventThatResume.bind(this)('utility-tray-abortopen');
+    });
+
+    test('utility-tray-abortclose', function() {
+      testEventThatResume.bind(this)('utility-tray-abortclose');
+    });
+
     test('cardviewclosed', function() {
       testEventThatResume.bind(this)('cardviewclosed');
+    });
+
+    suite('handle events with swipe detected', function() {
+      setup(function() {
+        StatusBar.element.classList.add('hidden');
+        dispatchEdgeSwipeEvent('sheets-gesture-begin');
+        dispatchEdgeSwipeEvent('sheets-gesture-begin');
+        this.sinon.stub(StatusBar, 'isPaused', function() {
+          return true;
+        });
+      });
+
+      teardown(function() {
+        StatusBar.element.classList.remove('hidden');
+      });
+
+      test('apptitlestatechanged', function() {
+        testEventThatNotShowsIfSwipeDetected.bind(this)('apptitlestatechanged');
+      });
+
+      test('activitytitlestatechanged', function() {
+        testEventThatNotShowsIfSwipeDetected.
+          bind(this)('activitytitlestatechanged');
+      });
+
+      test('homescreenopened', function() {
+        testEventThatResumeIfNeeded.bind(this)('homescreenopened');
+      });
     });
   });
 
@@ -2440,6 +2421,45 @@ suite('system/Statusbar', function() {
       StatusBar.update.time.call(StatusBar, '***');
 
       assert.notEqual(originalWidth, StatusBar.PRIORITIES[labelIndex][1]);
+    });
+  });
+
+  suite('Battery icon', function() {
+    var cloneStatusbarSpy;
+
+    setup(function() {
+      MockNavigatorBattery.level = 0.95;
+      MockNavigatorBattery.charging = false;
+      StatusBar.update.battery.call(StatusBar);
+      cloneStatusbarSpy = this.sinon.spy(StatusBar, 'cloneStatusbar');
+    });
+
+    test('should not reprioritize icons when doesn\'t change', function() {
+      StatusBar.update.battery.call(StatusBar);
+
+      assert.isFalse(cloneStatusbarSpy.called);
+    });
+
+    test('should not reprioritize icons when computed level doesn\'t change',
+      function() {
+        MockNavigatorBattery.level = 0.9;
+        StatusBar.update.battery.call(StatusBar);
+
+        assert.isFalse(cloneStatusbarSpy.called);
+      });
+
+    test('should reprioritize icons when battery changes', function() {
+      MockNavigatorBattery.level = 0.5;
+      StatusBar.update.battery.call(StatusBar);
+
+      assert.isTrue(cloneStatusbarSpy.called);
+    });
+
+    test('should reprioritize icons when charging state changes', function() {
+      MockNavigatorBattery.charging = true;
+      StatusBar.update.battery.call(StatusBar);
+
+      assert.isTrue(cloneStatusbarSpy.called);
     });
   });
 
@@ -2527,6 +2547,12 @@ suite('system/Statusbar', function() {
 
       assert.isFalse(updateIconSpy.called);
     });
+
+    test('should reprioritize when inactive state changes', function() {
+      fakeIcons.signals[0].dataset.inactive = true;
+      StatusBar.update.signal.call(StatusBar);
+      assert.isTrue(updateIconSpy.called);
+    });
   });
 
   suite('Data icons', function() {
@@ -2605,4 +2631,83 @@ suite('system/Statusbar', function() {
       assert.equal(StatusBar.statusbarIconsMin.className, className);
     });
   });
+
+  suite('handle UpdateManager events', function() {
+    var app;
+    setup(function() {
+      app = {
+        isFullScreen: function() {
+          return false;
+        },
+        getTopMostWindow: function() {
+          return app;
+        },
+
+        element: document.createElement('div')
+      };
+
+      Service.currentApp = app;
+      StatusBar.element.classList.add('light');
+    });
+
+    teardown(function() {
+      Service.currentApp = null;
+    });
+
+    test('should remove light class', function() {
+      assert.isTrue(StatusBar.element.classList.contains('light'));
+      var evt = new CustomEvent('updatepromptshown');
+      StatusBar.handleEvent(evt);
+      assert.isFalse(StatusBar.element.classList.contains('light'));
+    });
+
+    test('should restore the current theme', function() {
+      var evt = new CustomEvent('updateprompthidden');
+      var setAppearanceStub = this.sinon.stub(StatusBar, 'setAppearance');
+      StatusBar.handleEvent(evt);
+      assert.isTrue(setAppearanceStub.called);
+      assert.isTrue(setAppearanceStub.calledWith(app));
+    });
+  });
+
+  function getMockApp() {
+    return {
+      _topWindow: {
+        appChrome: {
+          useLightTheming: function useLightTheming() {
+            return true;
+          },
+          isMaximized: function isMaximized() {
+            return true;
+          }
+        }
+      },
+      appChrome: {
+        isMaximized: function isMaximized() {
+          return true;
+        }
+      },
+      getTopMostWindow: function getTopMostWindow() {
+        return this._topWindow;
+      },
+      getBottomMostWindow: function getBottomMostWindow() {
+        return this;
+      }
+    };
+  }
+
+  function getMockChrome(mockedWidth) {
+    var element = {
+      querySelector: function() {
+        return {
+          getBoundingClientRect: function() {
+            return {
+              width: mockedWidth
+            };
+          }
+        };
+      }
+    };
+    return element;
+  }
 });

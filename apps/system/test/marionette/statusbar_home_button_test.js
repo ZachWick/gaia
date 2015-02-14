@@ -1,11 +1,8 @@
 'use strict';
 
-var Actions = require('marionette-client').Actions;
-
 marionette('Closing statusbar via home button >', function() {
 
   var assert = require('assert');
-  var System = require('./lib/system.js');
 
   var client = marionette.client({
     prefs: {
@@ -18,15 +15,13 @@ marionette('Closing statusbar via home button >', function() {
     }
   });
 
-  var system = null,
+  var system,
       verticalHomeApp = 'app://verticalhome.gaiamobile.org',
-      actions = new Actions(client);
-
-  suiteSetup(function() {
-    system = new System(client);
-  });
+      actions;
 
   setup(function() {
+    actions = client.loader.getActions();
+    system = client.loader.getAppClass('system');
     client.switchToFrame();
     system.waitForStartup();
   });
@@ -63,7 +58,7 @@ marionette('Closing statusbar via home button >', function() {
            .perform();
 
     // click home button
-    system.goHome();
+    system.tapHome();
     waitForHome();
     assert.ok(getScrollTop() === lastScrollTop);
   });

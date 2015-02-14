@@ -69,24 +69,74 @@ suite('calendar/calc', function() {
 
   });
 
-  test('#dayOfWeekFromSunday', function() {
-    var expected = [
-      ['sun', 0, 0],
-      ['mon', 1, 1],
-      ['tue', 2, 2],
-      ['wed', 3, 3],
-      ['thu', 4, 4],
-      ['fri', 5, 5],
-      ['sat', 6, 6]
-    ];
+  suite('#dayOfWeekFromStartDay', function() {
+    test('sunday', function() {
+      subject.startDay = 0;
 
-    expected.forEach(function(line) {
-      var [name, date, numeric] = line;
-      assert.equal(
-        subject.dayOfWeekFromSunday(date),
-        numeric,
-        name
-      );
+      var expected = [
+        ['sun', 0, 0],
+        ['mon', 1, 1],
+        ['tue', 2, 2],
+        ['wed', 3, 3],
+        ['thu', 4, 4],
+        ['fri', 5, 5],
+        ['sat', 6, 6]
+      ];
+
+      expected.forEach(function(line) {
+        var [name, date, numeric] = line;
+        assert.equal(
+          subject.dayOfWeekFromStartDay(date),
+          numeric,
+          name
+        );
+      });
+    });
+
+    test('Monday', function() {
+      subject.startDay = 1;
+
+      var expected = [
+        ['mon', 1, 0],
+        ['tue', 2, 1],
+        ['wed', 3, 2],
+        ['thu', 4, 3],
+        ['fri', 5, 4],
+        ['sat', 6, 5],
+        ['sun', 0, 6]
+      ];
+
+      expected.forEach(function(line) {
+        var [name, date, numeric] = line;
+        assert.equal(
+          subject.dayOfWeekFromStartDay(date),
+          numeric,
+          name
+        );
+      });
+    });
+
+    test('Saturday', function() {
+      subject.startDay = 6;
+
+      var expected = [
+        ['sat', 6, 0],
+        ['sun', 0, 1],
+        ['mon', 1, 2],
+        ['tue', 2, 3],
+        ['wed', 3, 4],
+        ['thu', 4, 5],
+        ['fri', 5, 6]
+      ];
+
+      expected.forEach(function(line) {
+        var [name, date, numeric] = line;
+        assert.equal(
+          subject.dayOfWeekFromStartDay(date),
+          numeric,
+          name
+        );
+      });
     });
   });
 
@@ -113,43 +163,51 @@ suite('calendar/calc', function() {
 
   suite('#dayOfWeek', function() {
     var realStartDay;
-    var date = new Date(2012, 0, 1);
+    var date = new Date(2012, 0, 1); // 2012-01-01 is a Sunday
 
     suiteSetup(function() {
-      realStartDay = subject.startsOnMonday;
+      realStartDay = subject.startDay;
     });
 
     suiteTeardown(function() {
-      subject.startsOnMonday = realStartDay;
+      subject.startDay = realStartDay;
     });
 
-    test('weekStartOnMonday = 0', function() {
-      subject.startsOnMonday = 0;
+    test('weekStartDay = 0', function() {
+      subject.startDay = 0; // week starts on Sunday => Sunday is day 0
       assert.equal(
         subject.dayOfWeek(date),
         0
       );
     });
 
-    test('weekStartsOnMonday = 1', function() {
-      subject.startsOnMonday = 1;
+    test('weekStartDay = 1', function() {
+      subject.startDay = 1; // week starts on Monday => Sunday is day 6
       assert.equal(
         subject.dayOfWeek(date),
         6
+      );
+    });
+
+    test('weekStartDay = 6', function() {
+      subject.startDay = 6; // week starts on Saturday => Sunday is day 1
+      assert.equal(
+        subject.dayOfWeek(date),
+        1
       );
     });
   });
 
   suite('handle localization events', function() {
     var reaL10n;
-    var weekStartsOnMonday = 0;
+    var firstDayOfTheWeek = 0;
 
     suiteSetup(function() {
       reaL10n = navigator.mozL10n;
       navigator.mozL10n = {
         get: function(name) {
-          if (name === 'weekStartsOnMonday') {
-            return weekStartsOnMonday;
+          if (name === 'firstDayOfTheWeek') {
+            return firstDayOfTheWeek;
           }
           return reaL10n.get.apply(this, arguments);
         }
@@ -160,16 +218,22 @@ suite('calendar/calc', function() {
       navigator.mozL10n = reaL10n;
     });
 
-    test('weekStartsOnMonday = 1', function() {
-      weekStartsOnMonday = 1;
-      window.dispatchEvent(new Event('localized'));
-      assert.ok(subject.startsOnMonday, 'week starts on monday');
+    test('firstDayOfTheWeek = 1', function() {
+      firstDayOfTheWeek = 1;
+      window.dispatchEvent(new window.Event('localized'));
+      assert.equal(subject.startDay, 1, 'week starts on Monday');
     });
 
-    test('weekStartsOnMonday = 0', function() {
-      weekStartsOnMonday = 0;
-      window.dispatchEvent(new Event('localized'));
-      assert.ok(!subject.startsOnMonday, 'week starts on sunday');
+    test('firstDayOfTheWeek = 6', function() {
+      firstDayOfTheWeek = 6;
+      window.dispatchEvent(new window.Event('localized'));
+      assert.equal(subject.startDay, 6, 'week starts on Saturday');
+    });
+
+    test('firstDayOfTheWeek = 0', function() {
+      firstDayOfTheWeek = 0;
+      window.dispatchEvent(new window.Event('localized'));
+      assert.equal(subject.startDay, 0, 'week starts on Sunday');
     });
   });
 
@@ -383,27 +447,6 @@ suite('calendar/calc', function() {
 
   });
 
-  suite('#compareHours', function() {
-
-    test('already at top', function() {
-      var list = ['allday', 8, 10, 3, 2];
-      var sorted = list.sort(subject.compareHours);
-
-      assert.deepEqual(sorted, ['allday', 2, 3, 8, 10]);
-    });
-
-    test('two all days', function() {
-      var list = [1, 'allday', 10, 3, 2, 'allday'];
-      var sorted = list.sort(subject.compareHours);
-
-      assert.deepEqual(
-        sorted,
-        ['allday', 'allday', 1, 2, 3, 10]
-      );
-    });
-
-  });
-
   suite('#spanOfDay', function() {
 
     var date = new Date(2012, 1, 1, 10, 33);
@@ -433,86 +476,6 @@ suite('calendar/calc', function() {
       var out = subject.spanOfDay(date);
 
       assert.deepEqual(out, new Timespan(start, end));
-    });
-
-  });
-
-  suite('#hoursOfOccurence', function() {
-    var center;
-
-    setup(function() {
-      center = new Date(2012, 0, 1);
-    });
-
-    function hoursOfOccurence(start, end) {
-      return subject.hoursOfOccurence(center, start, end);
-    }
-
-    test('overlap before', function() {
-      var out = hoursOfOccurence(
-        new Date(2011, 1, 5),
-        new Date(2012, 0, 1, 3)
-      );
-
-      assert.deepEqual(out, [0, 1, 2]);
-    });
-
-    test('overlap after', function() {
-      var out = hoursOfOccurence(
-        new Date(2012, 0, 1, 20),
-        new Date(2012, 0, 2, 2)
-      );
-
-      assert.deepEqual(out, [20, 21, 22, 23]);
-    });
-
-    test('one hour', function() {
-      var out = hoursOfOccurence(
-        new Date(2012, 0, 1, 5),
-        new Date(2012, 0, 1, 6)
-      );
-
-      assert.deepEqual(out, [5]);
-    });
-
-    test('1 & 1/2 hours', function() {
-      var out = hoursOfOccurence(
-        new Date(2012, 0, 1, 5),
-        new Date(2012, 0, 1, 6, 30)
-      );
-
-      assert.deepEqual(out, [5, 6]);
-    });
-
-    test('2 hours', function() {
-      var out = hoursOfOccurence(
-        new Date(2012, 0, 1, 5),
-        new Date(2012, 0, 1, 7)
-      );
-
-      assert.deepEqual(out, [5, 6]);
-    });
-
-    test('all day', function() {
-      var end = new Date(2012, 0, 2);
-      end.setMilliseconds(end - 1);
-
-      var out = hoursOfOccurence(
-        new Date(2012, 0, 1),
-        end
-      );
-
-      assert.deepEqual(out, [subject.ALLDAY]);
-    });
-
-    test('bug 1074772', function() {
-      // yahoo sets start/end dates to same value for recurring all day events
-      var out = hoursOfOccurence(
-        new Date(2012, 0, 1),
-        new Date(2012, 0, 1)
-      );
-
-      assert.deepEqual(out, [subject.ALLDAY]);
     });
 
   });
@@ -811,19 +774,22 @@ suite('calendar/calc', function() {
     test('full day', function() {
       assert.isTrue(subject.isAllDay(
         new Date(2014, 9, 5),
+        new Date(2014, 9, 5),
         new Date(2014, 9, 6)
       ));
     });
 
     test('not start of the day', function() {
       assert.isFalse(subject.isAllDay(
+        new Date(2014, 9, 5),
         new Date(2014, 9, 5, 5),
         new Date(2014, 9, 6)
       ));
     });
 
     test('longer than a full day', function() {
-      assert.isFalse(subject.isAllDay(
+      assert.isTrue(subject.isAllDay(
+        new Date(2014, 9, 5),
         new Date(2014, 9, 5),
         new Date(2014, 9, 6, 5)
       ));
@@ -831,6 +797,12 @@ suite('calendar/calc', function() {
 
     test('multiple days', function() {
       assert.isTrue(subject.isAllDay(
+        new Date(2014, 9, 5),
+        new Date(2014, 9, 5),
+        new Date(2014, 9, 16)
+      ));
+      assert.isTrue(subject.isAllDay(
+        new Date(2014, 9, 8),
         new Date(2014, 9, 5),
         new Date(2014, 9, 16)
       ));
@@ -840,9 +812,23 @@ suite('calendar/calc', function() {
       // yahoo uses same start/end dates for recurring all day events
       assert.isTrue(subject.isAllDay(
         new Date(2014, 9, 5),
+        new Date(2014, 9, 5),
         new Date(2014, 9, 5)
       ));
     });
+  });
+
+  test('#monthStart', function() {
+    assert.deepEqual(
+      Calc.monthStart(new Date(2014, 10, 1)),
+      new Date(2014, 10, 1),
+      'first day'
+    );
+    assert.deepEqual(
+      Calc.monthStart(new Date(2014, 10, 12)),
+      new Date(2014, 10, 1),
+      'middle'
+    );
   });
 
 });

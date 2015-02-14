@@ -1,4 +1,4 @@
-/* global debug, ConfigManager, CostControl, Formatting,
+/* global _, debug, ConfigManager, CostControl, Formatting,
           SimManager, Common, ChartUtils */
 /* jshint -W120 */
 
@@ -18,6 +18,8 @@ var DataUsageTab = (function() {
   var appList, noData;
 
   var costcontrol, initialized, model;
+
+  var SYSTEM_MANIFEST = 'app://system.gaiamobile.org/manifest.webapp';
 
   function setupTab() {
     if (initialized) {
@@ -283,7 +285,7 @@ var DataUsageTab = (function() {
   // On tapping on wifi toggle
   function toggleWifi() {
     var isChecked = wifiToggle.checked;
-    wifiLayer.setAttribute('aria-hidden', !isChecked);
+    wifiLayer.hidden = !isChecked;
     // save wifi toggled state
     ConfigManager.setOption({ isWifiChartVisible: isChecked });
 
@@ -295,9 +297,9 @@ var DataUsageTab = (function() {
   // On tapping on mobile toggle
   function toggleMobile() {
     var isChecked = mobileToggle.checked;
-    mobileLayer.setAttribute('aria-hidden', !isChecked);
-    warningLayer.setAttribute('aria-hidden', !isChecked);
-    limitsLayer.setAttribute('aria-hidden', !isChecked);
+    mobileLayer.hidden = !isChecked;
+    warningLayer.hidden = !isChecked;
+    limitsLayer.hidden = !isChecked;
     // save wifi toggled state
     ConfigManager.setOption({ isMobileChartVisible: isChecked });
 
@@ -339,16 +341,20 @@ var DataUsageTab = (function() {
   function drawApps(model) {
 
     function createAppItem(app) {
+      var isSystem = app.manifestURL === SYSTEM_MANIFEST;
       var appElement = document.createElement('li');
       appElement.className = 'app-item';
 
       var linkElement = document.createElement('a');
-      linkElement.href = '##appdetail-view?manifestURL=' + app.manifestURL;
+      if (!isSystem) {
+        linkElement.href = '##appdetail-view?manifestURL=' + app.manifestURL;
+      }
       appElement.appendChild(linkElement);
 
       var imgElement = document.createElement('img');
       imgElement.className = 'app-image';
       imgElement.src = Common.getAppIcon(app);
+      imgElement.setAttribute('role', 'presentation');
       imgElement.onerror = function() {
         console.warn('Unable to load icon: ' + this.src);
         this.src = '/style/images/app/icons/default.png';
@@ -361,15 +367,19 @@ var DataUsageTab = (function() {
 
       var nameElement = document.createElement('div');
       nameElement.className = 'app-info-row app-name';
-      nameElement.textContent = Common.getLocalizedAppName(app);
+      nameElement.textContent = isSystem ?
+                                _('data-usage-other-apps') :
+                                Common.getLocalizedAppName(app);
       appInfoElement.appendChild(nameElement);
 
       var barElement = document.createElement('div');
       barElement.className = 'app-info-row app-usage-bar';
+      barElement.setAttribute('role', 'presentation');
       appInfoElement.appendChild(barElement);
 
       var usedBarElement = document.createElement('div');
       usedBarElement.className = 'app-usage-bar-used';
+      usedBarElement.setAttribute('role', 'presentation');
       barElement.appendChild(usedBarElement);
 
       var usageElement = document.createElement('div');
@@ -401,7 +411,6 @@ var DataUsageTab = (function() {
     // This method adds the residual traffic (the traffic that cannot be not
     // allocated to an app) to the System application.
     function fixResidualTraffic() {
-      var systemManifest = 'app://system.gaiamobile.org/manifest.webapp';
       var breakdownTotal = 0;
       if (manifests.length > 0) {
         breakdownTotal =
@@ -413,11 +422,11 @@ var DataUsageTab = (function() {
       // Updating System traffic to add the residual traffic
       if (residualTraffic > 0) {
         // Ensure system app exists
-        mobileApps[systemManifest] = mobileApps[systemManifest] || {total: 0};
-        var systemTraffic = mobileApps[systemManifest].total + residualTraffic;
-        mobileApps[systemManifest].total = systemTraffic;
-        if (!manifests[systemManifest]) {
-          manifests.push(systemManifest);
+        mobileApps[SYSTEM_MANIFEST] = mobileApps[SYSTEM_MANIFEST] || {total: 0};
+        var systemTraffic = mobileApps[SYSTEM_MANIFEST].total + residualTraffic;
+        mobileApps[SYSTEM_MANIFEST].total = systemTraffic;
+        if (!manifests[SYSTEM_MANIFEST]) {
+          manifests.push(SYSTEM_MANIFEST);
         }
       }
     }

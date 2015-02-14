@@ -52,6 +52,41 @@ suite('LockScreenInputpad', function() {
       .classList.contains('disabled'));
   });
 
+  suite('updatePassCodeUI', function() {
+    test('it would add passcode-entered class while passcode entered',
+    function() {
+      var method = subject.updatePassCodeUI;
+      var mockSubject = {
+        states: {
+          passCodeEntered: 'foo'
+        },
+        passcodePad: document.createElement('div'),
+        passcodeCode: document.createElement('div')
+      };
+      method.apply(mockSubject);
+      assert.isTrue(mockSubject.passcodePad
+        .classList.contains('passcode-entered'),
+        'no passcode-entered class added');
+    });
+
+    test('it would add passcode-entered class while no passcode entered',
+    function() {
+      var method = subject.updatePassCodeUI;
+      var mockSubject = {
+        states: {
+          passCodeEntered: ''
+        },
+        passcodePad: document.createElement('div'),
+        passcodeCode: document.createElement('div')
+      };
+      var stubRemove = this.sinon.stub(mockSubject.passcodePad.classList,
+        'remove');
+      method.apply(mockSubject);
+      assert.isTrue(stubRemove.called,
+        'no remove method called; so the class may still stick on it');
+    });
+  });
+
   suite('decorateErrorPasscodeUI', function() {
     var originalStates,
         originalConfigs,
@@ -179,8 +214,7 @@ suite('LockScreenInputpad', function() {
     });
 
     suite('click', function() {
-      var evt,
-          stubHandlePassCodeInput;
+      var evt;
       setup(function() {
         evt = {
           type: 'click',
@@ -196,15 +230,34 @@ suite('LockScreenInputpad', function() {
           },
           dataset: {}
         };
-        stubHandlePassCodeInput = sinon.stub(subject,
-          'handlePassCodeInput');
+
       });
       test('it would get the key', function() {
+        var stubHandlePassCodeInput = sinon.stub(subject,
+          'handlePassCodeInput');
         subject.handleEvent(evt);
         assert.isTrue(stubHandlePassCodeInput.calledWith('f'));
       });
-      teardown(function() {
-        stubHandlePassCodeInput.restore();
+      test('it would vibrate', function() {
+        var method = subject.handlePassCodeInput;
+        var mockThis = {
+          lockScreen: {
+            overlay: document.createElement('div'),
+            checkPassCode: () => {}
+          },
+          states: {
+            passCodeEntered: '123',
+            padVibrationEnabled: true
+          },
+          configs: {
+            padVibrationDuration: 100
+          },
+          updatePassCodeUI: () => {},
+          padVibrationEnabled: true
+        };
+        var stubVibrate = this.sinon.stub(navigator, 'vibrate');
+        method.call(mockThis, '4');
+        assert.isTrue(stubVibrate.called);
       });
     });
   });

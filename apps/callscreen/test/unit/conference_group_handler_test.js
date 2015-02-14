@@ -1,5 +1,5 @@
-/* globals CallScreen, FontSizeManager, MockCall, MockCallScreen,
-           MockCallsHandler, MockLazyL10n, MockMozL10n,
+/* globals ConferenceGroupHandler, FontSizeManager, MockCall, MockCallScreen,
+           MockCallsHandler, MockConferenceGroupUI, MockLazyL10n, MockMozL10n,
            MockNavigatorMozTelephony, MocksHelper, telephonyAddCall */
 
 'use strict';
@@ -10,6 +10,7 @@ require('/shared/test/unit/mocks/dialer/mock_handled_call.js');
 require('/shared/test/unit/mocks/dialer/mock_calls_handler.js');
 require('/shared/test/unit/mocks/dialer/mock_lazy_l10n.js');
 require('/test/unit/mock_call_screen.js');
+require('/test/unit/mock_conference_group_ui.js');
 require('/shared/test/unit/mocks/dialer/mock_font_size_manager.js');
 
 // The ConferenceGroupHandler binds stuff when evaluated so we load it
@@ -19,12 +20,14 @@ var mocksHelperForConferenceGroupHandler = new MocksHelper([
   'CallsHandler',
   'LazyL10n',
   'CallScreen',
+  'ConferenceGroupUI',
   'FontSizeManager'
 ]).init();
 
 suite('conference group handler', function() {
   var realMozTelephony;
   var realMozL10n;
+  var _;
 
   mocksHelperForConferenceGroupHandler.attachTestHelpers();
 
@@ -41,6 +44,7 @@ suite('conference group handler', function() {
 
     realMozL10n = navigator.mozL10n;
     navigator.mozL10n = MockMozL10n;
+    _ = MockMozL10n.get;
 
     fakeDOM = document.createElement('div');
     fakeDOM.innerHTML = '<section id="group-call" hidden>' +
@@ -114,6 +118,16 @@ suite('conference group handler', function() {
         MockNavigatorMozTelephony.calls = [];
         MockNavigatorMozTelephony.conferenceGroup.calls =
           [firstCall, secondCall];
+      });
+
+      test('should update the conference group details header', function() {
+        var bdiCompare = document.createElement('bdi');
+        bdiCompare.textContent = _('conferenceCall');
+        this.sinon.spy(MockConferenceGroupUI, 'setGroupDetailsHeader');
+        flush();
+        sinon.assert.calledWith(
+          MockConferenceGroupUI.setGroupDetailsHeader, bdiCompare.outerHTML);
+        assert.deepEqual(MockLazyL10n.keys.conferenceCall, {n: 2});
       });
 
       test('should update the group label', function() {
@@ -203,10 +217,11 @@ suite('conference group handler', function() {
         });
 
         test('should hide the overlay of group details', function() {
-          MockCallScreen.showGroupDetails();
-          assert.isTrue(MockCallScreen.mGroupDetailsShown);
+          this.sinon.spy(MockConferenceGroupUI, 'hideGroupDetails');
+          this.sinon.useFakeTimers();
           flush();
-          assert.isFalse(MockCallScreen.mGroupDetailsShown);
+          this.sinon.clock.tick();
+          sinon.assert.calledOnce(MockConferenceGroupUI.hideGroupDetails);
         });
 
         test('should update the calls display', function() {
@@ -359,15 +374,46 @@ suite('conference group handler', function() {
 
   suite('telephony.conferenceGroup.onerror handling', function() {
     test('error when merging calls', function() {
-      var showStatusSpy = this.sinon.spy(CallScreen, 'showStatusMessage');
+      var showStatusSpy = this.sinon.spy(MockCallScreen, 'showStatusMessage');
       MockNavigatorMozTelephony.conferenceGroup.onerror({name: 'addError'});
       assert.isTrue(showStatusSpy.calledWith('conferenceAddError'));
     });
 
     test('error when unmerging calls', function() {
-      var showStatusSpy = this.sinon.spy(CallScreen, 'showStatusMessage');
+      var showStatusSpy = this.sinon.spy(MockCallScreen, 'showStatusMessage');
       MockNavigatorMozTelephony.conferenceGroup.onerror({name: 'removeError'});
       assert.isTrue(showStatusSpy.calledWith('conferenceRemoveError'));
+    });
+  });
+
+  suite('public API', function() {
+    test('currentDuration', function() {
+      fakeDurationChildNode.textContent = '12:34';
+      assert.equal(ConferenceGroupHandler.currentDuration, '12:34');
+    });
+
+    test('addToGroupDetails()', function() {
+      this.sinon.spy(MockConferenceGroupUI ,'addCall');
+      ConferenceGroupHandler.addToGroupDetails(fakeGroupLine);
+      sinon.assert.calledWith(MockConferenceGroupUI.addCall, fakeGroupLine);
+    });
+
+    test('isGroupDetailsShown()', function() {
+      this.sinon.spy(MockConferenceGroupUI ,'isGroupDetailsShown');
+      ConferenceGroupHandler.isGroupDetailsShown();
+      sinon.assert.calledOnce(MockConferenceGroupUI.isGroupDetailsShown);
+    });
+
+    test('removeFromGroupDetails()', function() {
+      this.sinon.spy(MockConferenceGroupUI ,'removeCall');
+      ConferenceGroupHandler.removeFromGroupDetails(fakeGroupLine);
+      sinon.assert.calledWith(MockConferenceGroupUI.removeCall, fakeGroupLine);
+    });
+
+    test('signalConferenceEnded()', function() {
+      this.sinon.spy(MockConferenceGroupUI ,'markCallsAsEnded');
+      ConferenceGroupHandler.signalConferenceEnded();
+      sinon.assert.calledOnce(MockConferenceGroupUI.markCallsAsEnded);
     });
   });
 });

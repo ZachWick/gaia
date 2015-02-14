@@ -1,6 +1,6 @@
 {
   "name": "gaia-header",
-  "version": "0.4.2",
+  "version": "0.6.3",
   "homepage": "https://github.com/gaia-components/gaia-header",
   "authors": [
     "Wilson Page <wilsonpage@me.com>"
@@ -19,11 +19,12 @@
   ],
   "dependencies": {
     "gaia-icons": "gaia-components/gaia-icons#~0.7.0",
-    "pressed": "gaia-components/pressed#~0.1.0"
+    "gaia-component": "gaia-components/gaia-component#~0.2.0",
+    "font-fit": "gaia-components/font-fit#~0.2.2"
   },
   "devDependencies": {
-    "gaia-theme": "gaia-components/gaia-theme#~0.3.0",
-    "gaia-fonts": "gaia-components/gaia-fonts#~0.2.1",
+    "gaia-theme": "gaia-components/gaia-theme",
+    "gaia-fonts": "gaia-components/gaia-fonts",
     "base": "gaia-components/base"
   }
 }

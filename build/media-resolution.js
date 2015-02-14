@@ -1,5 +1,7 @@
-/*global require, exports*/
 'use strict';
+
+/* global require, exports */
+
 var utils = require('./utils');
 
 var MediaResolution = function() {
@@ -72,12 +74,8 @@ MediaResolution.prototype.execute = function(options) {
   files.forEach(this.fileProcess.bind(this));
 };
 
-function execute(config) {
-  var gaia = utils.gaia.getInstance(config);
-  gaia.webapps.forEach(function(webapp) {
-    (new MediaResolution()).execute({webapp: webapp, config: config});
-  });
-
+function execute(options, webapp) {
+  (new MediaResolution()).execute({ config: options, webapp: webapp });
 }
 
 exports.execute = execute;

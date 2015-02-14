@@ -161,7 +161,9 @@ function getStartCardArgs(id) {
       'setup_account_info', 'immediate',
       {
         onPushed: function(cardNode) {
-          var cachedNode = cardNode.cloneNode(true);
+          var cachedNode =
+                htmlCache.cloneAsInertNodeAvoidingCustomElementHorrors(
+                  cardNode);
           cachedNode.dataset.cached = 'cached';
           htmlCache.delayedSaveFromNode(cachedNode);
         }
@@ -202,9 +204,9 @@ if (appMessages.hasPending('activity') ||
   console.log('email waitForAppMessage');
 }
 
-if (appMessages.hasPending('alarm')) {
-  // There is an alarm, do not use the cache node, start fresh,
-  // as we were woken up just for the alarm.
+if (appMessages.hasPending('request-sync')) {
+  // There is an sync task, do not use the cache node, start fresh,
+  // as we were woken up just for the sync task.
   cachedNode = null;
   startedInBackground = true;
   console.log('email startedInBackground');
@@ -486,21 +488,14 @@ appMessages.on('activity', gateEntry(function(type, data, rawActivity) {
   }
 }));
 
-appMessages.on('notificationClosed', gateEntry(function(data) {
-  // The system notifies the app of closed messages. This really is not helpful
-  // for the email app, but since it wakes up the app, if we do not at least try
-  // to show a usable UI, the user could end up with a blank screen. As the app
-  // could also have been awakened by sync or just user action and running in
-  // the background, we cannot just close the app. So just make sure there is
-  // some usable UI.
-  if (waitForAppMessage && !cards.getCurrentCardType()) {
-    resetApp();
-  }
-}));
-
 appMessages.on('notification', gateEntry(function(data) {
   data = data || {};
-  var type = data.type || '';
+
+  // Default to message_list in case no type is set, which could happen if email
+  // is awoken by a notification that was generated before email switched to use
+  // Notifcation.data in 2.2. Previous versions used fragment IDs on iconURLs.
+  // By choosing the message list, then at least some UI is shown.
+  var type = data.type || 'message_list';
   var folderType = data.folderType || 'inbox';
 
   model.latestOnce('foldersSlice', function latestFolderSlice() {
@@ -533,15 +528,15 @@ appMessages.on('notification', gateEntry(function(data) {
             messageSuid: data.messageSuid,
             onPushed: onPushed
         });
-      } else {
-        console.error('unhandled notification type: ' + type);
       }
     }
 
     var acctsSlice = model.acctsSlice,
         accountId = data.accountId;
 
-    if (model.account.id === accountId) {
+    // accountId could be undefined if this was a notification that was
+    // generated before 2.2. In that case, just default to the current account.
+    if (!accountId || model.account.id === accountId) {
       // folderType will often be 'inbox' (in the case of a new message
       // notification) or 'outbox' (in the case of a "failed send"
       // notification).
@@ -562,6 +557,26 @@ appMessages.on('notification', gateEntry(function(data) {
       }
     }
   });
+}));
+
+/*
+ * IMPORTANT: place this event listener after the one for 'notification'. In the
+ * case where email is not running and is opened by a notification, these
+ * listeners are added after the initial notifications have been received by
+ * app_messages, and so the order in which they are registered affect which one
+ * is called first for pending listeners. evt.js does not keep an absolute order
+ * on all events.
+ */
+appMessages.on('notificationClosed', gateEntry(function(data) {
+  // The system notifies the app of closed messages. This really is not helpful
+  // for the email app, but since it wakes up the app, if we do not at least try
+  // to show a usable UI, the user could end up with a blank screen. As the app
+  // could also have been awakened by sync or just user action and running in
+  // the background, we cannot just close the app. So just make sure there is
+  // some usable UI.
+  if (waitForAppMessage && !cards.getCurrentCardType()) {
+    resetApp();
+  }
 }));
 
 model.init();

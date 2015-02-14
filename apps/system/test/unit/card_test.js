@@ -1,12 +1,11 @@
 /* global AppWindow, Card, MocksHelper, CardsHelper */
 'use strict';
 
+require('/shared/js/tagged.js');
 requireApp('system/test/unit/mock_app_window.js');
-requireApp('system/test/unit/mock_trusted_ui_manager.js');
 
 var mocksForCard = new MocksHelper([
-  'AppWindow',
-  'TrustedUIManager'
+  'AppWindow'
 ]).init();
 
 suite('system/Card', function() {
@@ -45,7 +44,7 @@ suite('system/Card', function() {
     document.body.appendChild(cardsList);
     mockManager.cardsList = cardsList;
 
-    requireApp('system/js/system.js');
+    requireApp('system/js/service.js');
     requireApp('system/js/base_ui.js');
     requireApp('system/js/cards_helper.js');
     requireApp('system/js/card.js', done);
@@ -58,6 +57,20 @@ suite('system/Card', function() {
         manager: mockManager
       });
       this.card.render();
+    });
+
+    test('card instance properties', function() {
+      // sanity check properties expected to be exposed on the instance
+      assert.isDefined(this.card.app);
+      assert.isDefined(this.card.instanceID);
+      assert.isDefined(this.card.title);
+      assert.isDefined(this.card.subTitle);
+      assert.isDefined(this.card.iconValue);
+      assert.isDefined(this.card.sslState);
+      assert.isDefined(this.card.viewClassList);
+      assert.isDefined(this.card.titleId);
+      assert.isDefined(this.card.closeButtonVisibility);
+      assert.isDefined(this.card.favoriteButtonVisibility);
     });
 
     test('exposes expected element properties', function(){
@@ -130,6 +143,51 @@ suite('system/Card', function() {
       assert.equal(appCard.titleNode.textContent, 'otherapp');
     });
 
+    test('app security for browser windows', function() {
+      var browserCard = new Card({
+        app: makeApp({ name: 'browserwindow' }),
+        manager: mockManager
+      });
+      browserCard.app.title = 'Page title';
+      this.sinon.stub(browserCard.app, 'isBrowser', function() {
+        return true;
+      });
+      this.sinon.stub(browserCard.app, 'getSSLState', function() {
+        return 'broken';
+      });
+      browserCard.render();
+      assert.isTrue(browserCard.app.getSSLState.calledOnce);
+      assert.equal(browserCard.sslState, 'broken');
+      assert.equal(browserCard.element.dataset.ssl, 'broken');
+    });
+    test('browser windows display URL in their subTitle', function() {
+      var browserCard = new Card({
+        app: makeApp({ name: 'browserwindow' }),
+        manager: mockManager
+      });
+      browserCard.app.config.url = 'https://someorigin.org/foo';
+      this.sinon.stub(browserCard, 'getDisplayURLString', function() {
+        return 'someorigin.org/foo';
+      });
+      this.sinon.stub(browserCard.app, 'isBrowser', function() {
+        return true;
+      });
+      browserCard.render();
+      assert.equal(browserCard.subTitle, 'someorigin.org/foo');
+    });
+    test('getDisplayURLString', function() {
+      var browserCard = new Card({
+        app: makeApp({ name: 'browserwindow' }),
+        manager: mockManager
+      });
+      assert.equal(browserCard.getDisplayURLString('foo'), 'foo');
+      assert.equal(browserCard.getDisplayURLString('about:blank'),
+                   'about:blank');
+      assert.equal(
+        browserCard.getDisplayURLString('http://foo.com:8080/bar?bazz#boss'),
+        'foo.com:8080/bar?bazz#boss'
+      );
+    });
   });
 
   suite('destroy', function() {

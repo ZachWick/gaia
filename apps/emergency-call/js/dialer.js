@@ -1,6 +1,6 @@
 'use strict';
 
-/* globals KeypadManager, ICEContacts, LazyLoader, SimSettingsHelper, SimPicker,
+/* globals KeypadManager, ICEContacts, LazyLoader, SimSettingsHelper,
            TelephonyMessages */
 /* exported CallHandler */
 
@@ -15,13 +15,12 @@ var CallHandler = {
       LazyLoader.load(['/shared/js/sim_settings_helper.js'], function() {
         SimSettingsHelper.getCardIndexFrom('outgoingCall',
         function(defaultCardIndex) {
-          if (defaultCardIndex == SimSettingsHelper.ALWAYS_ASK_OPTION_VALUE) {
-            var simPickerElt = document.getElementById('sim-picker');
-            var simFiles = [simPickerElt,
-                            '/shared/js/sim_picker.js',
-                            '/shared/style/sim_picker.css'];
-            LazyLoader.load(simFiles, function() {
-              SimPicker.getOrPick(defaultCardIndex, number, function(ci) {
+          if (defaultCardIndex === SimSettingsHelper.ALWAYS_ASK_OPTION_VALUE) {
+            LazyLoader.load(['/shared/js/component_utils.js',
+                             '/shared/elements/gaia_sim_picker/script.js'],
+            function() {
+              var simPicker = document.getElementById('sim-picker');
+              simPicker.getOrPick(defaultCardIndex, number, function(ci) {
                 var callPromise = self._telephony.dial(number, ci);
                 self._handleCallPromise(callPromise, sanitizedNumber);
               });

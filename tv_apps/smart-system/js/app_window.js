@@ -5,7 +5,8 @@
 /* global OrientationManager */
 /* global ScreenLayout */
 /* global SettingsCache */
-/* global System */
+/* global Service */
+/* global BrowserMixin */
 'use strict';
 
 (function(exports) {
@@ -702,8 +703,8 @@
     'childWindowFactory': window.ChildWindowFactory,
   };
 
-  AppWindow.prototype.openAnimation = 'enlarge';
-  AppWindow.prototype.closeAnimation = 'reduce';
+  AppWindow.prototype.openAnimation = 'invoked';
+  AppWindow.prototype.closeAnimation = 'fade-out';
 
   /**
    * Install sub components belong to this window instance.
@@ -905,6 +906,13 @@
         this.debug('setting background color..');
         this.browser.element.style.backgroundColor = backgroundColor;
       }
+      /**
+       * If the window is active, we should focus it when it loaded. We didn't
+       * focus it when this window was opened and defered to here.
+      **/
+      if (this.getBottomMostWindow().isActive() && this.isActive()) {
+        this.focus();
+      }
     };
 
   AppWindow.prototype._handle_mozbrowserlocationchange =
@@ -1035,7 +1043,7 @@
       console.log('[' + this.CLASS_NAME + ']' +
         '[' + (this.name || this.origin) + ']' +
         '[' + this.instanceID + ']' +
-        '[' + System.currentTime() + '] ' +
+        '[' + Service.currentTime() + '] ' +
         Array.slice(arguments).concat());
 
       if (TRACE) {
@@ -1048,7 +1056,7 @@
   AppWindow.prototype.forceDebug = function aw_debug(msg) {
     console.log('[Dump:' + this.CLASS_NAME + ']' +
       '[' + (this.name || this.origin) + ']' +
-      '[' + System.currentTime() + ']' +
+      '[' + Service.currentTime() + ']' +
       Array.slice(arguments).concat());
   };
 
@@ -1660,18 +1668,17 @@
    * @param  {String} url URL.
    */
   AppWindow.prototype.modifyURLatBackground = function aw_changeURL(url) {
-    // If the app is in foreground, it's too risky to change it's
-    // URL. We'll ignore this request.
-    if (!this.isActive()) {
-      var iframe = this.browser.element;
-      // If the app is opened and it is loaded to the correct page,
-      // then th=ere is nothing to do.
-      if (iframe.src !== url) {
-        // Rewrite the URL of the app frame to the requested URL.
-        // XXX: We could ended opening URls not for the app frame
-        // in the app frame. But we don't care.
-        iframe.src = url;
-      }
+    // XXX: If the app is in foreground, it's too risky to change it's
+    // URL. We still change it because the home app is an overlay on top of any
+    // app.
+    var iframe = this.browser.element;
+    // If the app is opened and it is loaded to the correct page,
+    // then there is nothing to do.
+    if (iframe.src !== url) {
+      // Rewrite the URL of the app frame to the requested URL.
+      // XXX: We could ended opening URLs not for the app frame
+      // in the app frame. But we don't care.
+      iframe.src = url;
     }
   };
 
@@ -2079,5 +2086,20 @@
 
     this.setVisible(false);
   };
+
+  /**
+   * Override focus to check if any popup on top of it and switch focus to them.
+   */
+  AppWindow.prototype.focus = function() {
+    if (this.contextmenu && this.contextmenu.hasMenuVisible()) {
+      this.contextmenu.focus();
+    } else if (this.modalDialog && this.modalDialog.isVisible()) {
+      this.modalDialog.focus();
+    } else {
+      // Call mixed in class.
+      BrowserMixin.focus.call(this);
+    }
+  };
+
   exports.AppWindow = AppWindow;
 }(window));

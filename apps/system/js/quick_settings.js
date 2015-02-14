@@ -1,5 +1,5 @@
 /* jshint loopfunc: true */
-/* global SettingsHelper, SettingsListener, AirplaneMode, applications,
+/* global SettingsHelper, SettingsListener, applications,
           UtilityTray, MozActivity */
 
 'use strict';
@@ -95,8 +95,7 @@
      * @memberof QuickSettings.prototype
      */
     monitorDataChange: function() {
-      var conns = window.navigator.mozMobileConnection ||
-        window.navigator.mozMobileConnections;
+      var conns = window.navigator.mozMobileConnections;
 
       if (!conns) {
         // hide data icon without mozMobileConnection object
@@ -330,13 +329,20 @@
               }
 
               enabled = !!this.bluetooth.dataset.enabled;
-              SettingsListener.getSettingsLock().set({
-                'bluetooth.enabled': !enabled
-              });
+              if (enabled) {
+                window.dispatchEvent(
+                  new CustomEvent('request-disable-bluetooth'));
+              } else {
+                window.dispatchEvent(
+                  new CustomEvent('request-enable-bluetooth'));
+              }
               break;
 
             case this.airplaneMode:
-              AirplaneMode.enabled = !this.airplaneMode.dataset.enabled;
+              var toggle = this.airplaneMode.dataset.enabled ?
+                'request-airplane-mode-disable' :
+                'request-airplane-mode-enable';
+              window.dispatchEvent(new CustomEvent(toggle));
               break;
 
             case this.fullApp:

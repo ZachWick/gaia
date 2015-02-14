@@ -5,6 +5,15 @@
 'use strict';
 
 var SearchView = {
+  context: {
+    ALL: 'ALL',
+    ARTISTS: 'ARTISTS',
+    ALBUMS: 'ALBUMS',
+    SONGS: 'SONGS',
+  },
+
+  searchContext: 'ALL',
+
   get view() {
     return document.getElementById('search');
   },
@@ -19,6 +28,11 @@ var SearchView = {
 
   get searchTitlesView() {
     return document.getElementById('views-search-titles');
+  },
+
+  showNoResult: function sv_showNoResult(show) {
+    var view = document.getElementById('views-search-no-result');
+    view.classList.toggle('hidden', !show);
   },
 
   init: function sv_init() {
@@ -61,24 +75,36 @@ var SearchView = {
           createListElement(option, result, this.dataSource.length - 1, query)
         );
       }
+
+      var totalFound = numResults.artist + numResults.album + numResults.title;
+      this.showNoResult(totalFound === 0);
     }
 
     // Only shows the search results of tracks when it's in picker mode
     if (!App.pendingPick) {
-      this.searchHandles.artist = musicdb.enumerate(
-        'metadata.artist', null, 'nextunique',
-        sv_showResult.bind(this, 'artist')
-      );
-      this.searchHandles.album = musicdb.enumerate(
-        'metadata.album', null, 'nextunique',
-        sv_showResult.bind(this, 'album')
-      );
+      if (this.searchContext === this.context.ALL ||
+          this.searchContext === this.context.ARTISTS) {
+        this.searchHandles.artist = musicdb.enumerate(
+          'metadata.artist', null, 'nextunique',
+          sv_showResult.bind(this, 'artist')
+        );
+      }
+      if (this.searchContext === this.context.ALL ||
+          this.searchContext === this.context.ALBUMS) {
+        this.searchHandles.album = musicdb.enumerate(
+          'metadata.album', null, 'nextunique',
+          sv_showResult.bind(this, 'album')
+        );
+      }
     }
 
-    this.searchHandles.title = musicdb.enumerate(
-      'metadata.title',
-      sv_showResult.bind(this, 'title')
-    );
+    if (this.searchContext === this.context.ALL ||
+        this.searchContext === this.context.SONGS) {
+      this.searchHandles.title = musicdb.enumerate(
+        'metadata.title',
+        sv_showResult.bind(this, 'title')
+      );
+    }
   },
 
   clearSearch: function sv_clearSearch() {
@@ -95,6 +121,7 @@ var SearchView = {
       view.getElementsByClassName('search-results')[0].innerHTML = '';
       view.classList.add('hidden');
     });
+    this.showNoResult(true);
     this.dataSource = [];
   },
 

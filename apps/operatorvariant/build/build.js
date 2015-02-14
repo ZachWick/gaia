@@ -53,8 +53,6 @@ Resources.prototype.getResources = function(conf) {
   operatorJSON.ringtone = this.getRingtoneResource(conf.ringtone);
   operatorJSON.power = this.getPowerResource(conf.power);
   operatorJSON.search = this.getSearchResource(conf.search);
-  operatorJSON.default_search =
-    this.getDefaultSearchResource(conf.default_search);
   operatorJSON.keyboard_settings = this.getKeyboardResource(conf.keyboard);
   operatorJSON.topsites = this.getResourceWithIcon(conf.topsites, 'topSites',
                                                    'tilePath', 'tile');
@@ -240,30 +238,6 @@ Resources.prototype.getSearchResource = function (searchPath) {
   }
 };
 
-// Create default search JSON and add files.
-Resources.prototype.getDefaultSearchResource = function (defaultSearchPath) {
-  if (defaultSearchPath) {
-    var file = this.getFile(defaultSearchPath);
-    var searchContent = utils.getJSON(file);
-
-    if (!searchContent.urlTemplate ||
-        !searchContent.suggestionsUrlTemplate ||
-        !searchContent.iconPath) {
-      throw new Error('Invalid format of the default provider search engine.');
-    }
-
-    if (!searchContent.iconPath.startsWith(this.appPrefix)) {
-      var searchFile = this.getFile(searchContent.iconPath);
-      this.addEntry(searchFile, searchFile.leafname);
-      searchContent.iconUrl = this.appURL + searchFile.leafName;
-      delete searchContent.iconPath;
-    }
-
-    return this.createJSON(file.leafName, searchContent);
-  }
-};
-
-
 // Create keyboard JSON.
 Resources.prototype.getKeyboardResource = function (keyboard) {
   if (keyboard) {
@@ -335,7 +309,7 @@ OperatorAppBuilder.prototype.setOptions = function(options) {
 
   this.gaia = utils.gaia.getInstance(options);
 
-  var settingsFile = utils.getFile(options.STAGE_DIR, 'settings_stage.json');
+  var settingsFile = utils.getFile(options.PROFILE_DIR, 'settings.json');
   if (!settingsFile.exists()) {
     throw new Error('file not found: ' + settingsFile.path);
   }

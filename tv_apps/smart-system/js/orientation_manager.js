@@ -1,3 +1,4 @@
+/* global Service, SettingsCache, OrientationManager */
 'use strict';
 
 (function(window) {
@@ -47,7 +48,7 @@
         case 'lockscreen-appclosing':
         case 'searchclosing':
           // We don't need to reset orientation if lockscreen is locked.
-          if (System.locked) {
+          if (Service.locked) {
             return;
           }
         /**
@@ -95,8 +96,9 @@
      * @memberOf module:OrientationManager
      */
     isOnRealDevice: function sl_isOnRealDevice() {
-      if (typeof(this._isOnRealDevice) !== 'undefined')
+      if (typeof(this._isOnRealDevice) !== 'undefined') {
         return this._isOnRealDevice;
+      }
 
       // XXX: A hack to know we're using real device or not
       // is to detect screen size.
@@ -160,4 +162,4 @@
   };
 
   OrientationManager.init();
-}(this));
+}(window));

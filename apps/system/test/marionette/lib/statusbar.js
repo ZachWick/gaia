@@ -73,6 +73,33 @@
     kActiveIndicatorTimeout: null,
     client: null,
 
+    get maximizedStatusbar() {
+      var statusbar = StatusBar.Selector.statusbarMaximizedWrapper;
+      return this.client.findElement(statusbar);
+    },
+
+    get minimizedStatusbar() {
+      var statusbar = StatusBar.Selector.statusbarMinimizedWrapper;
+      return this.client.findElement(statusbar);
+    },
+
+    isVisible: function() {
+      var el = this.client.findElement(StatusBar.Selector.statusbar);
+      return el.displayed();
+    },
+
+    waitForAppear: function() {
+      this.client.waitFor(function() {
+        return this.isVisible();
+      }.bind(this));
+    },
+
+    waitForDisappear: function() {
+      this.client.waitFor(function() {
+        return !this.isVisible();
+      }.bind(this));
+    },
+
     /**
      * Change the delay value in StatusBar.
      * @param {number=} delay The new value for delay in milliseconds.
@@ -223,7 +250,10 @@
         return function() {
           var icon = this.icon;
           self.client.waitFor(function() {
-            return icon.displayed();
+            var display = icon.scriptWith(function(element) {
+              return window.getComputedStyle(element).display;
+            });
+            return display !== 'none';
           });
           return icon;
         };
@@ -233,7 +263,10 @@
         return function() {
           var icon = this.icon;
           self.client.waitFor(function() {
-            return !icon.displayed();
+            var display = icon.scriptWith(function(element) {
+              return window.getComputedStyle(element).display;
+            });
+            return display === 'none';
           });
           return icon;
         };

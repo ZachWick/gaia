@@ -2,7 +2,7 @@
   <template>
 
     <gaia-header id="main-header">
-      <h1 id="main-list-title" data-l10n-id="settings"> Settings </h1>
+      <h1 id="main-list-title" data-l10n-id="settings"></h1>
       <a id="activityDoneButton" href="#home" role="menuitem" data-l10n-id="done">Done</a>
     </gaia-header>
 
@@ -29,32 +29,32 @@
             <small id="wifi-desc" class="menu-item-desc"></small>
           </a>
         </li>
-        <li id="simCardManager-settings" aria-disabled="true">
+        <li id="simCardManager-settings">
           <a id="menuItem-simManager" class="menu-item" data-icon="sim" href="#sim-manager">
             <span data-l10n-id="simManager">SIM Manager</span>
             <small id="simmanager-desc" class="menu-item-desc"></small>
           </a>
         </li>
-        <li id="call-settings" aria-disabled="true">
+        <li id="call-settings">
           <a id="menuItem-callSettings" class="menu-item" data-icon="call" href="#call">
             <span data-l10n-id="callSettings">Call Settings</span>
             <small id="call-desc" class="menu-item-desc"></small>
           </a>
         </li>
-        <li id="messaging-settings" aria-disabled="true">
+        <li id="messaging-settings">
           <a id="menuItem-messagingSettings" class="menu-item" data-icon="messages" href="#messaging">
             <span data-l10n-id="messagingSettings">Messaging Settings</span>
             <small id="messaging-desc" class="menu-item-desc"></small>
           </a>
         </li>
-        <li id="data-connectivity" data-category="connectivity" aria-disabled="true">
+        <li id="data-connectivity" data-category="connectivity">
           <a id="menuItem-cellularAndData" class="menu-item" data-icon="signal-5" href="#carrier">
             <span data-l10n-id="cellularAndData">Cellular &amp; Data</span>
             <small id="data-desc" class="menu-item-desc"></small>
           </a>
         </li>
         <li>
-          <a class="menuItem-bluetooth menu-item" data-icon="bluetooth">
+          <a class="menuItem-bluetooth menu-item" data-icon="bluetooth" href="#bluetooth">
             <span data-l10n-id="bluetooth">Bluetooth</span>
             <small class="bluetooth-desc menu-item-desc"></small>
           </a>
@@ -121,6 +121,11 @@
         <li class="themes-section" hidden>
           <a id="menuItem-themes" class="menu-item" data-icon="themes" href="#themes" data-l10n-id="themes">Themes</a>
         </li>
+        <li id="addons-section" hidden>
+          <a id="menuItem-addons" class="menu-item" data-icon="add" href="#addons">
+            <span data-l10n-id="addons">Addons</span>
+          </a>
+        </li>
       </ul>
 
       <header>
@@ -133,7 +138,7 @@
             <small id="fxa-desc" class="menu-item-desc"></small>
           </a>
         </li>
-        <li data-show-name="findmydevice.ui.enabled" hidden>
+        <li>
           <a id="menuItem-findmydevice" class="menu-item" data-icon="find" href="#findmydevice">
             <span data-l10n-id="findmydevice">Find My Device</span>
             <small class="findmydevice-desc menu-item-desc"></small>
@@ -142,35 +147,41 @@
       </ul>
 
       <header>
-        <h2 data-l10n-id="privacyAndSecurity">Privacy &amp; Security</h2>
+        <h2 data-l10n-id="privacyAndSecurity"></h2>
       </header>
       <ul>
         <li>
           <a id="menuItem-screenLock" class="menu-item" data-icon="lock" href="#screenLock">
-            <span data-l10n-id="screenLock">Screen Lock</span>
+            <span data-l10n-id="screenLock"></span>
             <small class="screenLock-desc menu-item-desc"></small>
           </a>
         </li>
-        <li id="simSecurity-settings" aria-disabled="true">
+        <li id="simSecurity-settings">
           <a id="menuItem-simSecurity" class="menu-item" data-icon="sim" href="#simpin">
-            <span data-l10n-id="simSecurity">SIM Security</span>
+            <span data-l10n-id="simSecurity"></span>
             <small class="menu-item-desc simCardLock-desc"></small>
           </a>
         </li>
         <li>
           <a id="menuItem-appPermissions" class="menu-item" data-icon="tick-circle" href="#appPermissions">
-            <span data-l10n-id="appPermissions">App Permissions</span>
+            <span data-l10n-id="appPermissions"></span>
           </a>
         </li>
         <li>
           <a id="menuItem-doNotTrack" class="menu-item" data-icon="do-not-track" href="#doNotTrack">
-            <span data-l10n-id="doNotTrack">Do Not Track</span>
+            <span data-l10n-id="doNotTrack"></span>
             <small id="doNotTrack-desc" class="menu-item-desc"></small>
           </a>
         </li>
         <li>
           <small id="browsingPrivacy-desc" class="menu-item-desc"></small>
-          <a id="menuItem-browsingPrivacy" class="menu-item" data-icon="browsing" href="#browsingPrivacy" data-l10n-id="browsingPrivacy">Browsing Privacy</a>
+          <a id="menuItem-browsingPrivacy" class="menu-item" data-icon="browsing" href="#browsingPrivacy" data-l10n-id="browsingPrivacy"></a>
+        </li>
+        <li class="privacy-panel-item" hidden>
+          <a id="menuItem-privacyPanel" class="menu-item" data-icon="developer" href="#privacyPanel">
+            <span data-l10n-id="privacy-controls"></span>
+            <small id="privacyPanel-desc" class="menu-item-desc"></small>
+          </a>
         </li>
       </ul>
 
@@ -178,9 +189,9 @@
         <h2 data-l10n-id="storage">Storage</h2>
       </header>
       <ul>
-        <li class="pack-split">
+        <li class="pack-split usb-item">
           <label class="pack-switch">
-            <input class="usb-switch" data-ignore type="checkbox">
+            <input class="usb-switch" data-ignore type="checkbox" disabled>
             <span></span>
           </label>
           <label id="menuItem-enableStorage" class="name">
@@ -250,19 +261,6 @@
       <ul id="icc-entries">
       </ul>
     </div>
-
-    <form role="dialog" data-type="confirm" class="turn-on-ums-dialog" hidden>
-      <section>
-        <h1 data-l10n-id="ums-warning-title">Enable USB storage?</h1>
-        <p data-l10n-id="ums-confirm">
-          Enabling USB storage allows another computer or device connected using USB to access files on this phone.
-        </p>
-      </section>
-      <menu>
-        <button data-l10n-id="cancel" class="ums-cancel-option">Cancel</button>
-        <button data-l10n-id="ok" class="ums-confirm-option recommend">OK</button>
-      </menu>
-    </form>
 
     <panel data-path="panels/root/panel"><panel>
 

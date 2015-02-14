@@ -7,6 +7,10 @@ from gaiatest.apps.phone.app import Phone
 from gaiatest.apps.phone.regions.call_screen import CallScreen
 
 from marionette import SkipTest
+try:
+    from marionette.wait import Wait
+except:
+    from marionette_driver.wait import Wait
 
 
 class TestCallLogAllCalls(GaiaTestCase):
@@ -28,7 +32,6 @@ class TestCallLogAllCalls(GaiaTestCase):
         """
         https://moztrap.mozilla.org/manage/case/1306/
         """
-
         test_phone_number = self.testvars['remote_phone_number']
 
         # Remove the first digit (country code) which is not displayed for AT&T/USA - Bug 1088756
@@ -47,13 +50,15 @@ class TestCallLogAllCalls(GaiaTestCase):
             self.testvars['plivo']['auth_token'],
             self.testvars['plivo']['phone_number']
         )
-        self.call_uuid = self.plivo.make_call(
-            to_number=self.testvars['carrier']['phone_number'].replace('+', ''),
-            timeout=30)
 
+        self.call_uuid = self.plivo.make_call(
+            to_number=self.testvars['local_phone_numbers'][0].replace('+', ''))
         call_screen = CallScreen(self.marionette)
         call_screen.wait_for_incoming_call()
+
         self.plivo.hangup_call(self.call_uuid)
+        self.plivo.wait_for_call_completed(self.call_uuid)
+        self.call_uuid = None
 
         self.apps.switch_to_displayed_app()
         call_log = self.phone.tap_call_log_toolbar_button()

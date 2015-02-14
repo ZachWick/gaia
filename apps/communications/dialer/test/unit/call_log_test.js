@@ -6,6 +6,7 @@
           CallGroupMenu, Utils, MockMozContacts */
 
 require('/shared/js/dialer/utils.js');
+require('/shared/js/usertiming.js');
 
 require('/dialer/test/unit/mock_call_log_db_manager.js');
 require('/dialer/test/unit/mock_performance_testing_helper.js');
@@ -329,8 +330,10 @@ suite('dialer/call_log', function() {
           group.voicemail ? 'voiceMail' :
             (group.emergency ? 'emergencyNumber' : '');
         assert.equal(primaryInfoMain.getAttribute('data-l10n-id'), expected);
+        assert.isNull(primaryInfoMain.querySelector('bdi'));
       } else {
-        assert.equal(primaryInfoMain.innerHTML, group.number);
+        assert.equal(
+          primaryInfoMain.querySelector('bdi').innerHTML, group.number);
       }
     }
 
@@ -370,7 +373,9 @@ suite('dialer/call_log', function() {
     var retryCount = groupDOM.querySelector('.retry-count');
     assert.ok(retryCount, 'Retry count ok');
     if (group.retryCount > 1) {
-      assert.equal(retryCount.innerHTML, '(' + group.retryCount + ')');
+      assert.equal(
+        retryCount.querySelector('bdi').innerHTML,
+        '(' + group.retryCount + ')');
     }
     if (callback) {
       callback();
@@ -391,7 +396,7 @@ suite('dialer/call_log', function() {
     } else if (contact && contact.org) {
       assert.equal(primaryInfoMain.innerHTML, contact.org);
     } else if (number) {
-      assert.equal(primaryInfoMain.innerHTML, number);
+      assert.equal(primaryInfoMain.querySelector('bdi').innerHTML, number);
     }
 
     // Additional info.

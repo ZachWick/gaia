@@ -1,9 +1,7 @@
 /* exported PlayerView */
-/* global TitleBar, MusicComms, musicdb, ModeManager, App,
-          getThumbnailURL,
-          generateDefaultThumbnailURL, parseAudioMetadata, getAlbumArtBlob,
-          ListView, ForwardLock, formatTime, MozActivity, asyncStorage,
-          SETTINGS_OPTION_KEY, MODE_PLAYER */
+/* global TitleBar, MusicComms, musicdb, ModeManager, App, AlbumArtCache,
+          AudioMetadata, ListView, ForwardLock, formatTime, MozActivity,
+          asyncStorage, SETTINGS_OPTION_KEY, MODE_PLAYER */
 'use strict';
 
 // We have four types of the playing sources
@@ -145,6 +143,9 @@ var PlayerView = {
     // A timer we use to work around
     // https://bugzilla.mozilla.org/show_bug.cgi?id=783512
     this.endedTimer = null;
+
+    // Listen to language changes to update the language direction accordingly
+    navigator.mozL10n.ready(this.updateL10n.bind(this));
   },
 
   // When SCO is connected, music is unable to play sounds even it's in the
@@ -247,8 +248,7 @@ var PlayerView = {
     this.offscreenImage.src = '';
     this.coverImage.classList.remove('fadeIn');
 
-    getThumbnailURL(fileinfo, function(url) {
-      url = url || generateDefaultThumbnailURL(fileinfo.metadata);
+    AlbumArtCache.getCoverURL(fileinfo).then(function(url) {
       this.offscreenImage.addEventListener('load', pv_showImage.bind(this));
       this.offscreenImage.src = url;
     }.bind(this));
@@ -306,6 +306,12 @@ var PlayerView = {
     for (var i = 0; i < 5; i++) {
       var rating = this.ratings[i];
 
+      if (i === rated - 1) {
+          rating.setAttribute('aria-checked', true);
+      } else {
+          rating.setAttribute('aria-checked', false);
+      }
+
       if (i < rated) {
         rating.classList.add('star-on');
       } else {
@@ -355,17 +361,17 @@ var PlayerView = {
   },
 
   getMetadata: function pv_getMetadata(blob, callback) {
-    parseAudioMetadata(blob, pv_gotMetadata, pv_metadataError.bind(this));
+    AudioMetadata.parse(blob).then(pv_gotMetadata, pv_metadataError.bind(this));
 
     function pv_gotMetadata(metadata) {
       callback(metadata);
     }
     function pv_metadataError(e) {
+      console.warn('parseAudioMetadata: error parsing metadata - ', e);
       /* jshint validthis:true */
       if (this.onerror) {
         this.onerror(e);
       }
-      console.warn('parseAudioMetadata: error parsing metadata - ', e);
     }
   },
 
@@ -429,14 +435,8 @@ var PlayerView = {
     // picture. If .picture is null, something went wrong and listeners should
     // probably use a blank picture (or their own placeholder).
     if (this.audio.currentTime === 0) {
-      getAlbumArtBlob(fileinfo, function(err, blob) {
-        if (!err) {
-          if (blob) {
-            notifyMetadata.picture = blob;
-          }
-        } else {
-          notifyMetadata.picture = null;
-        }
+      AlbumArtCache.getCoverBlob(fileinfo).then(function(blob) {
+        notifyMetadata.picture = blob;
         MusicComms.notifyMetadataChanged(notifyMetadata);
       });
     }
@@ -708,6 +708,7 @@ var PlayerView = {
     this.isTouching = this.isFastSeeking = true;
     var offset = direction * 2;
 
+    this.prevPlayStatus = this.playStatus;
     this.playStatus = direction ? PLAYSTATUS_FWD_SEEK : PLAYSTATUS_REV_SEEK;
     this.updateRemotePlayStatus();
 
@@ -722,8 +723,9 @@ var PlayerView = {
       window.clearInterval(this.intervalID);
     }
 
-    // After we cancel the fast seeking, an 'playing' will be fired,
-    // so that we don't have to update the remote play status here.
+    this.playStatus = this.prevPlayStatus;
+    this.prevPlayStatus = null;
+    this.updateRemotePlayStatus();
   },
 
   updateSeekBar: function pv_updateSeekBar() {
@@ -744,7 +746,10 @@ var PlayerView = {
 
   seekAudio: function pv_seekAudio(seekTime) {
     if (seekTime !== undefined) {
-      this.audio.currentTime = seekTime;
+      // Because of bug 1119186, setting the currentTime to a value as same as
+      // the audio.duration seems corrupts the audio element, so here we floor
+      // the seek time to prevent it.
+      this.audio.currentTime = Math.floor(seekTime);
     }
 
     var startTime = this.audio.startTime;
@@ -777,7 +782,18 @@ var PlayerView = {
     // The width of the seek indicator must be also considered
     // so we divide the width of seek indicator by 2 to find the center point
     var x = (ratio * this.seekBar.offsetWidth -
-      this.seekIndicator.offsetWidth / 2) + 'px';
+      this.seekIndicator.offsetWidth / 2);
+
+    if (this.isLTR) {
+      x = x + 'px';
+    } else {
+      if (x < 0) {
+        x = Math.abs(x) + 'px';
+      } else {
+        x = '-' + x + 'px';
+      }
+    }
+
     this.seekIndicator.style.transform = 'translateX(' + x + ')';
 
     this.seekElapsed.textContent = formatTime(currentTime);
@@ -800,7 +816,7 @@ var PlayerView = {
     }
 
     musicdb.getFile(songData.name, function(file) {
-      getAlbumArtBlob(songData, function(err, pictureBlob) {
+      AlbumArtCache.getCoverBlob(songData).then(function(pictureBlob) {
         var filename = songData.name,
         name = filename.substring(filename.lastIndexOf('/') + 1);
 
@@ -915,10 +931,10 @@ var PlayerView = {
             this.showInfo();
             break;
           case 'player-controls-play':
-            if (this.playStatus === PLAYSTATUS_PLAYING) {
-              this.pause();
-            } else {
+            if (this.playControl.classList.contains('is-pause')) {
               this.play();
+            } else {
+              this.pause();
             }
             break;
           case 'player-album-repeat':
@@ -967,15 +983,13 @@ var PlayerView = {
         break;
       case 'play':
         this.playControl.classList.remove('is-pause');
+        // The play event is fired when audio playback has begun.
+        this.playStatus = PLAYSTATUS_PLAYING;
+        this.updateRemotePlayStatus();
         break;
       case 'pause':
         this.playControl.classList.add('is-pause');
         this.playStatus = PLAYSTATUS_PAUSED;
-        this.updateRemotePlayStatus();
-        break;
-      case 'playing':
-        // The playing event fires when the audio is ready to start.
-        this.playStatus = PLAYSTATUS_PLAYING;
         this.updateRemotePlayStatus();
         break;
       case 'touchstart':
@@ -994,7 +1008,12 @@ var PlayerView = {
           if (x > 1) {
             x = 1;
           }
-          this.seekTime = x * this.seekBar.max;
+
+          if (this.isLTR) {
+            this.seekTime = x * this.seekBar.max;
+          } else {
+            this.seekTime = this.audio.duration - x * this.seekBar.max;
+          }
           this.setSeekBar(this.audio.startTime,
             this.audio.duration, this.seekTime);
         }
@@ -1086,5 +1105,9 @@ var PlayerView = {
       default:
         return;
     }
+  },
+
+  updateL10n: function pv_updateL10n() {
+    this.isLTR = navigator.mozL10n.language.direction === 'ltr' ? true : false;
   }
 };

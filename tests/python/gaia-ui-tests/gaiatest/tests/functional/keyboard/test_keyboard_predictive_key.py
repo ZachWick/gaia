@@ -15,6 +15,9 @@ class TestKeyboardPredictiveKey(GaiaTestCase):
         self.data_layer.set_setting('keyboard.autocorrect', True)
 
     def test_keyboard_predictive_key(self):
+        # Check that the device is in portrait mode as the autocorrect words returned depend on the screen orientation
+        self.assertEqual('portrait-primary', self.device.screen_orientation)
+
         self.ui_tests = UiTests(self.marionette)
         self.ui_tests.launch()
 
@@ -61,13 +64,13 @@ class TestKeyboardPredictiveKey(GaiaTestCase):
         ## TEST 3 - type something with autocorrect and press space
         keyboard.send('ye ')
         keyboard_page.switch_to_frame()
-        self.assertEqual(keyboard_page.text_input, 'keyboard Tea yes ')
+        self.assertEqual(keyboard_page.text_input, 'keyboard Tea he ')
 
         # TEST 4 - autocorrect, dot and backspace
         keyboard.send('wot.')
         keyboard_page.switch_to_frame()
-        self.assertEqual(keyboard_page.text_input, 'keyboard Tea yes wit.')
+        self.assertEqual(keyboard_page.text_input, 'keyboard Tea he wit.')
 
         keyboard.tap_backspace()
         keyboard_page.switch_to_frame()
-        self.assertEqual(keyboard_page.text_input, 'keyboard Tea yes wot')
+        self.assertEqual(keyboard_page.text_input, 'keyboard Tea he wot')

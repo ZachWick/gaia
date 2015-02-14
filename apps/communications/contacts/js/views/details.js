@@ -13,6 +13,8 @@
 /* global utils */
 /* global TAG_OPTIONS */
 /* global ICEData */
+/* globals ContactToVcardBlob, VcardFilename */
+/* global MozActivity */
 
 var contacts = window.contacts || {};
 
@@ -40,6 +42,7 @@ contacts.Details = (function() {
       detailsInner,
       dom,
       currentSocial,
+      header,
       _;
 
   var socialButtonIds = [
@@ -51,6 +54,7 @@ contacts.Details = (function() {
   var init = function cd_init(currentDom) {
     _ = navigator.mozL10n.get;
     dom = currentDom || document;
+    header = dom.querySelector('#details-view-header');
     contactDetails = dom.querySelector('#contact-detail');
     listContainer = dom.querySelector('#details-list');
     detailsName = dom.querySelector('#contact-name-title');
@@ -129,13 +133,14 @@ contacts.Details = (function() {
   var doHandleDetailsBack = function() {
     var hashParams = window.location.hash.split('?');
     var params = hashParams.length > 1 ?
-                      utils.extractParams(hashParams[1]) : -1;
+                 utils.extractParams(hashParams[1]) : -1;
 
-    Contacts.navigation.back(resetPhoto);
     // post message to parent page included Contacts app.
     if (params.back_to_previous_tab === '1') {
       var message = { 'type': 'contactsiframe', 'message': 'back' };
       window.parent.postMessage(message, COMMS_APP_ORIGIN);
+    } else {
+      Contacts.navigation.back(resetPhoto);
     }
   };
 
@@ -197,7 +202,8 @@ contacts.Details = (function() {
     cover.addEventListener('touchstart', onTouchStart, true);
   };
 
-  var render = function cd_render(currentContact, fbContactData) {
+  // readOnly tells us if we should allow editing the rendered contact.
+  var render = function cd_render(currentContact, fbContactData, readOnly) {
     if(isAFavoriteChange){
       isAFavoriteChange = false;
       return Promise.resolve(isAFavoriteChange);
@@ -210,6 +216,15 @@ contacts.Details = (function() {
 
     // Initially enabled and only disabled if necessary
     editContactButton.removeAttribute('disabled');
+    editContactButton.classList.remove('hide');
+    header.setAttribute('action', 'back');
+    socialTemplate.classList.remove('hide');
+
+    if (readOnly) {
+      editContactButton.classList.add('hide');
+      header.setAttribute('action', 'close');
+      socialTemplate.classList.add('hide');
+    }
 
     if (!fbContactData && isFbContact) {
       var fbContact = new fb.Contact(contactData);
@@ -421,6 +436,9 @@ contacts.Details = (function() {
     });
     currentSocial = social;
     var linkButton = social.querySelector('#link_button');
+    var shareButton = social.querySelector('#share_button');
+
+    shareButton.addEventListener('click', shareContact);
 
     if (!isFbContact) {
       socialButtonIds.forEach(function check(id) {
@@ -431,15 +449,13 @@ contacts.Details = (function() {
       });
       // Checking whether link should be enabled or not
       doDisableButton(linkButton);
+      shareButton.classList.remove('hide');
     } else {
         var socialLabel = social.querySelector('#social-label');
         if (socialLabel) {
           socialLabel.setAttribute('data-l10n-id', 'facebook');
         }
-
-        // Check whether the social buttons that require to be online
-        // should be there
-        disableButtons(social, socialButtonIds);
+        shareButton.classList.add('hide');
     }
 
     // If it is a FB Contact but not linked unlink must be hidden
@@ -456,24 +472,10 @@ contacts.Details = (function() {
     var socialTemplate = document.querySelector(
                                         ':not([data-template])[data-social]');
 
-    if (socialTemplate) {
-      if (isFbContact) {
-         disableButtons(socialTemplate, socialButtonIds);
-      }
-      else {
-        disableButtons(socialTemplate, ['#link_button']);
-      }
+    if (socialTemplate && !isFbContact) {
+      doDisableButton(socialTemplate.querySelector('#link_button'));
     }
   };
-
-  function disableButtons(tree, buttonIds) {
-    buttonIds.forEach(function enable(id) {
-      var button = tree.querySelector(id);
-      if (button) {
-        doDisableButton(button);
-      }
-    });
-  }
 
   function doDisableButton(buttonElement) {
     if (navigator.onLine === true) {
@@ -639,6 +641,29 @@ contacts.Details = (function() {
     contactDetails.style.transform = '';
     contactDetails.classList.add('no-photo');
     cover.dataset.imgHash = '';
+  };
+
+  var shareContact = function cd_shareContact() {
+    const VCARD_DEPS = [
+      '/shared/js/text_normalizer.js',
+      '/shared/js/contact2vcard.js',
+      '/shared/js/setImmediate.js'
+    ];
+
+    LazyLoader.load(VCARD_DEPS,function vcardLoaded() {
+      ContactToVcardBlob([contactData], function blobReady(vcardBlob) {
+        new MozActivity({
+          name: 'share',
+          data: {
+            type: 'text/vcard',
+            number: 1,
+            blobs: [vcardBlob],
+            filenames: [VcardFilename(contactData)]
+          }
+        });
+        // The MIME of the blob should be this for some MMS gateways
+      }, { type: 'text/x-vcard'} );
+    });
   };
 
   return {

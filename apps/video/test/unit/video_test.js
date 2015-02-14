@@ -42,6 +42,11 @@ function getAsset(filename, loadCallback) {
   req.send();
 }
 
+function testOverlayVisibility(expected) {
+  assert.equal(document.body.classList.contains('overlay'), expected);
+  assert.equal(dom.overlay.classList.contains('hidden'), !expected);
+}
+
 suite('Video App Unit Tests', function() {
   var nativeMozL10n;
   var videoName = 'video name';
@@ -83,7 +88,7 @@ suite('Video App Unit Tests', function() {
       assert.equal(document.getElementById('info-name').textContent,
         'Small webm');
       assert.equal(document.getElementById('info-length').textContent,
-        '00:05');
+        '00:06');
       assert.equal(document.getElementById('info-type').textContent,
         'webm');
       assert.equal(document.getElementById('info-date').textContent,
@@ -228,6 +233,8 @@ suite('Video App Unit Tests', function() {
     setup(function() {
       dom.overlayTitle.setAttribute('data-l10n-id', '');
       dom.overlayText.setAttribute('data-l10n-id', '');
+      dom.overlay.classList.add('hidden');
+      document.body.classList.remove('overlay');
     });
 
     suiteTeardown(function() {
@@ -241,7 +248,7 @@ suite('Video App Unit Tests', function() {
       thumbnailList.addItem({'name': thumbnailItemName});
       updateDialog();
       setTimeout(function() {
-        assert.isTrue(dom.overlay.classList.contains('hidden'));
+        testOverlayVisibility(false);
         done();
       }, 1);
     });
@@ -260,6 +267,7 @@ suite('Video App Unit Tests', function() {
 
       // Allow lazy loader to load
       setTimeout(function() {
+        testOverlayVisibility(true);
         assert.isTrue(dom.overlayMenu.classList.contains('hidden'));
         assert.isTrue(dom.overlayActionButton.classList.contains('hidden'));
         assert.equal(dom.overlayTitle.getAttribute('data-l10n-id'),
@@ -285,6 +293,7 @@ suite('Video App Unit Tests', function() {
 
       // Allow lazy loader to load
       setTimeout(function() {
+        testOverlayVisibility(true);
         assert.isFalse(dom.overlayMenu.classList.contains('hidden'));
         assert.isFalse(dom.overlayActionButton.classList.contains('hidden'));
         assert.equal(dom.overlayActionButton.getAttribute('data-l10n-id'),
@@ -310,6 +319,7 @@ suite('Video App Unit Tests', function() {
 
       // Allow lazy loader to load
       setTimeout(function() {
+        testOverlayVisibility(true);
         assert.isTrue(dom.overlayMenu.classList.contains('hidden'));
         assert.isTrue(dom.overlayActionButton.classList.contains('hidden'));
         assert.equal(dom.overlayTitle.getAttribute('data-l10n-id'),
@@ -333,6 +343,7 @@ suite('Video App Unit Tests', function() {
 
       // Allow lazy loader to load
       setTimeout(function() {
+        testOverlayVisibility(true);
         assert.isTrue(dom.overlayMenu.classList.contains('hidden'));
         assert.isTrue(dom.overlayActionButton.classList.contains('hidden'));
         assert.equal(dom.overlayTitle.getAttribute('data-l10n-id'),
@@ -1370,7 +1381,7 @@ suite('Video App Unit Tests', function() {
 
   suite('handleScreenLayoutChange flows', function() {
 
-    var updateAllThumbnailTitleSpy;
+    var updateAllThumbnailTitlesSpy;
     var rescaleSpy;
     var HAVE_METADATA = 1;
 
@@ -1384,8 +1395,8 @@ suite('Video App Unit Tests', function() {
       thumbnailList = new ThumbnailList(MockThumbnailGroup, dummyContainer);
       thumbnailList.addItem({'name': videoName});
 
-      updateAllThumbnailTitleSpy = sinon.spy(thumbnailList,
-                                             'updateAllThumbnailTitle');
+      updateAllThumbnailTitlesSpy = sinon.spy(thumbnailList,
+                                             'updateAllThumbnailTitles');
       rescaleSpy = sinon.spy(VideoUtils, 'fitContainer');
 
       getAsset('/test/unit/media/test.webm', function(blob) {
@@ -1395,7 +1406,7 @@ suite('Video App Unit Tests', function() {
     });
 
     teardown(function() {
-      updateAllThumbnailTitleSpy.reset();
+      updateAllThumbnailTitlesSpy.reset();
       rescaleSpy.reset();
     });
 
@@ -1494,7 +1505,7 @@ suite('Video App Unit Tests', function() {
 
       handleScreenLayoutChange();
 
-      assert.isTrue(updateAllThumbnailTitleSpy.calledOnce);
+      assert.isTrue(updateAllThumbnailTitlesSpy.calledOnce);
     });
 
     test('#handleScreenLayoutChange: update thumbnail title text later',
@@ -1506,7 +1517,7 @@ suite('Video App Unit Tests', function() {
 
       handleScreenLayoutChange();
 
-      assert.equal(updateAllThumbnailTitleSpy.callCount, 0);
+      assert.equal(updateAllThumbnailTitlesSpy.callCount, 0);
       assert.isTrue(pendingUpdateTitleText);
     });
 
@@ -1520,9 +1531,9 @@ suite('Video App Unit Tests', function() {
 
       handleScreenLayoutChange();
 
-      // Shouldn't have invoked updateAllThumbnailTitle nor
+      // Shouldn't have invoked updateAllThumbnailTitles nor
       // should have set pendingUpdateTitleText
-      assert.equal(updateAllThumbnailTitleSpy.callCount, 0);
+      assert.equal(updateAllThumbnailTitlesSpy.callCount, 0);
       assert.isFalse(pendingUpdateTitleText);
     });
 

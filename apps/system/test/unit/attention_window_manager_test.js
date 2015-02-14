@@ -1,4 +1,4 @@
-/* globals attentionWindowManager, AttentionWindowManager, MockSystem,
+/* globals attentionWindowManager, AttentionWindowManager, MockService,
             MockAttentionWindow, MocksHelper, MockHomescreenWindow,
             MockHomescreenLauncher, MockAppWindow, homescreenLauncher */
 'use strict';
@@ -8,11 +8,11 @@ requireApp('system/test/unit/mock_attention_window.js');
 requireApp('system/test/unit/mock_homescreen_window.js');
 requireApp('system/test/unit/mock_homescreen_launcher.js');
 requireApp('system/test/unit/mock_attention_indicator.js');
-requireApp('system/shared/test/unit/mocks/mock_system.js');
+requireApp('system/shared/test/unit/mocks/mock_service.js');
 
 var mocksForAttentionWindowManager = new MocksHelper([
-  'AttentionWindow', 'System', 'HomescreenLauncher',
-  'HomescreenWindow', 'AttentionIndicator'
+  'AttentionWindow', 'Service', 'HomescreenLauncher',
+  'HomescreenWindow'
 ]).init();
 
 suite('system/AttentionWindowManager', function() {
@@ -35,7 +35,7 @@ suite('system/AttentionWindowManager', function() {
 
   teardown(function() {
     window.homescreenLauncher = realHomescreenLauncher;
-    MockSystem.currentApp = null;
+    MockService.currentApp = null;
     stubById.restore();
   });
 
@@ -48,7 +48,7 @@ suite('system/AttentionWindowManager', function() {
 
   suite('Hierarchy functions', function() {
     setup(function() {
-      this.sinon.stub(MockSystem, 'request');
+      this.sinon.stub(MockService, 'request');
       window.attentionWindowManager = new AttentionWindowManager();
       window.attentionWindowManager.start();
     });
@@ -67,18 +67,48 @@ suite('system/AttentionWindowManager', function() {
     });
     test('start should register hierarchy', function() {
       assert.isTrue(
-        MockSystem.request.calledWith('registerHierarchy',
+        MockService.request.calledWith('registerHierarchy',
           attentionWindowManager));
     });
     test('stop should unregister hierarchy', function() {
       attentionWindowManager.stop();
       assert.isTrue(
-        MockSystem.request.calledWith('unregisterHierarchy',
+        MockService.request.calledWith('unregisterHierarchy',
           attentionWindowManager));
     });
   });
 
   suite('Maintain attention indicator', function() {
+    var sytemStub;
+    setup(function() {
+      window.attentionWindowManager = new AttentionWindowManager();
+      window.attentionWindowManager.start();
+      sytemStub = this.sinon.stub(MockService, 'request');
+    });
+    teardown(function() {
+      window.attentionWindowManager.stop();
+      window.attentionWindowManager = null;
+    });
+    test('When there is an attention window closed', function() {
+      attentionWindowManager._openedInstances = new Map([[att1, att1]]);
+      attentionWindowManager._instances = [att1];
+      window.dispatchEvent(new CustomEvent('attentionclosed', {
+        detail: att1
+      }));
+      assert.isTrue(sytemStub.calledWith('makeAmbientIndicatorActive'));
+    });
+
+    test('When there is an attention window requests to open', function() {
+      attentionWindowManager._openedInstances = new Map();
+      attentionWindowManager._instances = [att1];
+      window.dispatchEvent(new CustomEvent('attentionopened', {
+        detail: att1
+      }));
+      assert.isTrue(sytemStub.calledWith('makeAmbientIndicatorInactive'));
+    });
+  });
+
+  suite('get shown window count', function() {
     setup(function() {
       window.attentionWindowManager = new AttentionWindowManager();
       window.attentionWindowManager.start();
@@ -87,29 +117,22 @@ suite('system/AttentionWindowManager', function() {
       window.attentionWindowManager.stop();
       window.attentionWindowManager = null;
     });
-    test('When there is an attention window closed', function() {
-      var ai = attentionWindowManager.attentionIndicator;
-      var stubShow = this.sinon.stub(ai, 'show');
-
-      attentionWindowManager._openedInstances = new Map([[att1, att1]]);
-      attentionWindowManager._instances = [att1];
-      window.dispatchEvent(new CustomEvent('attentionclosed', {
-        detail: att1
-      }));
-      assert.isTrue(stubShow.called);
-    });
-
-    test('When there is an attention window requests to open', function() {
-      var ai = attentionWindowManager.attentionIndicator;
-      var stubHide = this.sinon.stub(ai, 'hide');
-
-      attentionWindowManager._openedInstances = new Map();
-      attentionWindowManager._instances = [att1];
-      window.dispatchEvent(new CustomEvent('attentionopened', {
-        detail: att1
-      }));
-      assert.isTrue(stubHide.called);
-    });
+    test('should not take hidden window into account when updating indicator',
+      function() {
+        window.dispatchEvent(new CustomEvent('attentioncreated', {
+          detail: att1
+        }));
+        this.sinon.stub(att1, 'isHidden').returns(true);
+        window.dispatchEvent(new CustomEvent('attentioncreated', {
+          detail: att2
+        }));
+        this.sinon.stub(MockService, 'request');
+        window.dispatchEvent(new CustomEvent('attentionopened', {
+          detail: att2
+        }));
+        assert.isTrue(MockService.request
+                      .calledWith('makeAmbientIndicatorInactive'));
+      });
   });
 
   suite('fullscreen mode', function() {
@@ -159,6 +182,34 @@ suite('system/AttentionWindowManager', function() {
       window.attentionWindowManager = null;
     });
 
+    test('broadcast secure app opened event', function() {
+      attentionWindowManager._instances =
+        new Map([[att3, att3], [att2, att2], [att1, att1]]);
+      var stubBroadcast = [
+        this.sinon.stub(att1, 'broadcast'),
+        this.sinon.stub(att2, 'broadcast'),
+        this.sinon.stub(att3, 'broadcast')
+      ];
+      window.dispatchEvent(new CustomEvent('secure-appopened'));
+      assert.isTrue(stubBroadcast[0].calledWith('secure-appopened'));
+      assert.isTrue(stubBroadcast[1].calledWith('secure-appopened'));
+      assert.isTrue(stubBroadcast[2].calledWith('secure-appopened'));
+    });
+
+    test('broadcast secure app closed event', function() {
+      attentionWindowManager._instances =
+        new Map([[att3, att3], [att2, att2], [att1, att1]]);
+      var stubBroadcast = [
+        this.sinon.stub(att1, 'broadcast'),
+        this.sinon.stub(att2, 'broadcast'),
+        this.sinon.stub(att3, 'broadcast')
+      ];
+      window.dispatchEvent(new CustomEvent('secure-appclosed'));
+      assert.isTrue(stubBroadcast[0].calledWith('secure-appclosed'));
+      assert.isTrue(stubBroadcast[1].calledWith('secure-appclosed'));
+      assert.isTrue(stubBroadcast[2].calledWith('secure-appclosed'));
+    });
+
     test('broadcast lockscreen app opened event', function() {
       attentionWindowManager._instances =
         new Map([[att3, att3], [att2, att2], [att1, att1]]);
@@ -190,7 +241,7 @@ suite('system/AttentionWindowManager', function() {
     test('System resize request', function() {
       attentionWindowManager._topMostWindow = att1;
       var stubResize = this.sinon.stub(att1, 'resize');
-      attentionWindowManager.handleEvent(
+      attentionWindowManager.respondToHierarchyEvent(
         new CustomEvent('system-resize')
       );
       assert.isTrue(stubResize.called);
@@ -205,7 +256,7 @@ suite('system/AttentionWindowManager', function() {
         new Map([[att3, att3], [att2, att2]]);
       var stubCloseForAtt3 = this.sinon.stub(att3, 'close');
       var stubCloseForAtt2 = this.sinon.stub(att2, 'close');
-      attentionWindowManager.handleEvent(new CustomEvent('home'));
+      attentionWindowManager.respondToHierarchyEvent(new CustomEvent('home'));
       spyReady.getCall(0).args[0]();
       assert.isTrue(stubCloseForAtt2.called);
       assert.isTrue(stubCloseForAtt3.called);
@@ -215,7 +266,7 @@ suite('system/AttentionWindowManager', function() {
       var stubGetHomescreen =
         this.sinon.stub(homescreenLauncher, 'getHomescreen');
       attentionWindowManager._openedInstances = new Map();
-      attentionWindowManager.handleEvent(new CustomEvent('home'));
+      attentionWindowManager.respondToHierarchyEvent(new CustomEvent('home'));
       assert.isFalse(stubGetHomescreen.called);
     });
 
@@ -224,7 +275,8 @@ suite('system/AttentionWindowManager', function() {
         new Map([[att3, att3], [att2, att2]]);
       var stubCloseForAtt3 = this.sinon.stub(att3, 'close');
       var stubCloseForAtt2 = this.sinon.stub(att2, 'close');
-      attentionWindowManager.handleEvent(new CustomEvent('holdhome'));
+      attentionWindowManager.respondToHierarchyEvent(
+        new CustomEvent('holdhome'));
       assert.isTrue(stubCloseForAtt2.called);
       assert.isTrue(stubCloseForAtt3.called);
     });
@@ -259,7 +311,7 @@ suite('system/AttentionWindowManager', function() {
         var stubCloseForAtt1 = this.sinon.stub(att1, 'close');
         var stubCloseForAtt2 = this.sinon.stub(att2, 'close');
         attentionWindowManager.handleEvent(
-          new CustomEvent('launchapp', { detail: { stayBackground: true }})
+          new CustomEvent('launchapp', {detail: {stayBackground: true}})
         );
         assert.isFalse(stubCloseForAtt1.called);
         assert.isFalse(stubCloseForAtt2.called);
@@ -348,7 +400,7 @@ suite('system/AttentionWindowManager', function() {
         attentionWindowManager._topMostWindow = att1;
         var stubClose = this.sinon.stub(att1, 'close');
         var spyReadyForApp = this.sinon.stub(app, 'ready');
-        MockSystem.currentApp = app;
+        MockService.currentApp = app;
         window.dispatchEvent(new CustomEvent('attentionrequestclose', {
           detail: att1
         }));
@@ -381,6 +433,24 @@ suite('system/AttentionWindowManager', function() {
             detail: att1
           }));
           assert.isTrue(stubClose.called);
+        });
+    });
+
+    suite('updateClassState()', function() {
+      test('should add a global class when there are attention windows',
+        function() {
+          attentionWindowManager._openedInstances = new Map([[att1, att1]]);
+          attentionWindowManager.updateClassState();
+          assert.isTrue(attentionWindowManager.screen.classList
+            .contains('attention'));
+        });
+
+      test('should not add a global class when there are no attention windows',
+        function() {
+          attentionWindowManager._openedInstances = new Map();
+          attentionWindowManager.updateClassState();
+          assert.isFalse(attentionWindowManager.screen.classList
+            .contains('attention'));
         });
     });
   });

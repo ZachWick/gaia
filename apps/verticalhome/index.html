@@ -9,12 +9,14 @@
     <link rel="stylesheet" href="style/css/app.css">
     <link rel="stylesheet" href="style/css/search.css">
     <link rel="stylesheet" href="shared/elements/gaia_grid/style/external.css">
-    <link rel="manifest" href="manifest.webapp">
+    <meta name="defaultLanguage" content="en-US">
+    <meta name="availableLanguages" content="ar, en-US, fr, zh-TW">
     <link rel="localization" href="locales/homescreen.{locale}.properties">
     <link rel="localization" href="/shared/locales/collection_categories/collection_categories.{locale}.properties">
     <link rel="localization" href="/shared/elements/gaia_grid/locales/gaia_grid.{locale}.properties">
     <link rel="localization" href="/shared/elements/gaia_menu/locales/gaia_menu.{locale}.properties">
 
+    <script defer src="shared/js/usertiming.js"></script>
     <script defer src="shared/js/performance_testing_helper.js"></script>
     <script defer src="shared/js/l10n.js"></script>
     <!-- <link rel="stylesheet" href="shared/style/input_areas.css"> -->
@@ -42,7 +44,6 @@
     <script defer src="shared/js/bookmarks_database.js"></script>
     <script defer src="shared/js/collections_database.js"></script>
     <script defer src="shared/js/lazy_loader.js"></script>
-    <script defer src="shared/js/settings_listener.js"></script>
     <script defer src="shared/js/url_helper.js"></script>
 
     <script defer src="js/sources/bookmark.js"></script>
@@ -59,7 +60,7 @@
     <script defer src="shared/elements/gaia_grid/js/items/collection.js"></script>
     <script defer src="shared/elements/gaia_grid/js/items/divider.js"></script>
     <script defer src="shared/elements/gaia_grid/js/items/mozapp.js"></script>
-    <!-- <script defer src="shared/elements/gaia_grid/js/items/group.js"></script> -->
+    <script defer src="shared/elements/gaia_grid/js/items/group.js"></script>
     <script defer src="shared/elements/gaia_grid/js/items/placeholder.js"></script>
 
     <!-- Gaia Components -->
@@ -79,8 +80,8 @@
 
     <section id="edit-header" role="region">
       <gaia-header>
-        <h1 data-l10n-id="edit-mode">Edit</h1>
-        <a href="#" data-l10n-id="edit-done" id="exit-edit-mode">Done</a>
+        <h1 data-l10n-id="edit-mode"></h1>
+        <a href="#" data-l10n-id="edit-done" id="exit-edit-mode"></a>
       </gaia-header>
     </section>
 
@@ -109,7 +110,7 @@
       <form>
         <p>
           <input type="text" id="edit-group-title" x-inputmode="latin-prose" dir="auto"></input>
-          <button id="edit-group-title-clear" type="reset">Clear</button>
+          <button id="edit-group-title-clear" type="reset"></button>
         </p>
       </form>
     </section>

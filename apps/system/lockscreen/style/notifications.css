@@ -1,13 +1,3 @@
-/**
- * For all LockScreen notifications related styles.
- */
-:root {
-  --width-actionable-button: 8.3rem;
-  --padleft-button: 1.1rem;
-  --button-label-size: 1.4rem;
-}
-
-
 /* Individual style; to avoid utility tray patches breark lockscreen notitifications. */
 #notifications-lockscreen-container .notification {
   position: relative;
@@ -177,6 +167,9 @@
  */
 
 #notifications-lockscreen-container {
+  --width-actionable-button: 8.3rem;
+  --padleft-button: 1.1rem;
+  --button-label-size: 1.4rem;
   z-index: 1;
   position: absolute;
   top: calc(50% - 7.65rem);
@@ -228,9 +221,12 @@
   * manally adjusted according to UX; 1x Notification is 5.8rem
   * UX specifies in bug 1023500 that the container should not be scrollable
   * (so there is no mask either)
+  *
+  * Bug 1115921 specifies that in this condition, the notification should
+  * be vertically centered, thus 2.5rem which puts it in the middle
   */
   #notifications-lockscreen-container.collapsed {
-    top: calc(50% - 4.7rem);
+    top: calc(50% - 2.5rem);
     height: 5.8rem;
     overflow-y: hidden;
   }

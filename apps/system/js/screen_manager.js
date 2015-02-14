@@ -1,7 +1,8 @@
 'use strict';
 
-/* globals SettingsListener, Bluetooth, StatusBar, System,
-           ScreenBrightnessTransition, ScreenWakeLockManager */
+/* globals SettingsListener, Bluetooth, StatusBar, Service,
+           ScreenBrightnessTransition, ScreenWakeLockManager,
+           ScreenAutoBrightness                               */
 
 var ScreenManager = {
 
@@ -42,35 +43,19 @@ var ScreenManager = {
   _savedBrightness: 1,
 
   /*
-   * The auto-brightness algorithm will never set the screen brightness
-   * to a value smaller than this. 0.1 seems like a good screen brightness
-   * in a completely dark room on a Unagi.
-   */
-  AUTO_BRIGHTNESS_MINIMUM: 0.1,
-
-  /*
-   * This constant is used in the auto brightness algorithm. We take
-   * the base 10 logarithm of the incoming lux value from the light
-   * sensor and multiplied it by this constant. That value is used to
-   * compute a weighted average with the current brightness and
-   * finally that average brightess is and then clamped to the range
-   * [AUTO_BRIGHTNESS_MINIMUM, 1.0].
-   *
-   * Making this value larger will increase the brightness for a given
-   * ambient light level. At a value of about .25, the screen will be
-   * at full brightness in sunlight or in a well-lighted work area.
-   * At a value of about .3, the screen will typically be at maximum
-   * brightness in outdoor daylight conditions, even when overcast.
-   */
-  AUTO_BRIGHTNESS_CONSTANT: 0.27,
-
-  /*
    * This property will host a ScreenBrightnessTransition instance
    * and control the brightness transition for us.
    * Eventually we want to move all brightness controls
    * (including auto-brightness toggle and calculation) out of this module.
    */
   _screenBrightnessTransition: null,
+
+  /*
+   * ScreenAutoBrightness instance
+   * manages the devicelight events and adjusts the screen brightness
+   * automatically
+   */
+  _screenAutoBrightness: null,
 
   /**
    * Timeout to black the screen when locking.
@@ -126,6 +111,11 @@ var ScreenManager = {
 
     this._screenBrightnessTransition = new ScreenBrightnessTransition();
 
+    this._screenAutoBrightness = new ScreenAutoBrightness();
+    this._screenAutoBrightness.onbrightnesschange = function(brightness) {
+        this.setScreenBrightness(brightness, false);
+    }.bind(this);
+
     var self = this;
     var power = navigator.mozPower;
 
@@ -180,31 +170,6 @@ var ScreenManager = {
     }
   },
 
-  //
-  // Automatically adjust the screen brightness based on the ambient
-  // light (in lux) measured by the device light sensor
-  //
-  autoAdjustBrightness: function scm_adjustBrightness(lux) {
-    var currentBrightness = this._targetBrightness;
-
-    if (lux < 1) { // Can't take the log of 0 or negative numbers
-      lux = 1;
-    }
-
-    var computedBrightness =
-      Math.log(lux) / Math.LN10 * this.AUTO_BRIGHTNESS_CONSTANT;
-
-    var clampedBrightness = Math.max(this.AUTO_BRIGHTNESS_MINIMUM,
-                                     Math.min(1.0, computedBrightness));
-
-    // If nothing changed, we're done.
-    if (clampedBrightness === currentBrightness) {
-      return;
-    }
-
-    this.setScreenBrightness(clampedBrightness, false);
-  },
-
   handleEvent: function scm_handleEvent(evt) {
     var telephony = window.navigator.mozTelephony;
     var call;
@@ -221,7 +186,7 @@ var ScreenManager = {
             this._inTransition) {
           return;
         }
-        this.autoAdjustBrightness(evt.value);
+        this._screenAutoBrightness.autoAdjust(evt.value);
         break;
 
       case 'sleep':
@@ -474,12 +439,12 @@ var ScreenManager = {
   _reconfigScreenTimeout: function scm_reconfigScreenTimeout() {
     // Remove idle timer if screen wake lock is acquired or
     // if no app has been displayed yet.
-    if (this._wakeLockManager.isHeld || !System.currentApp) {
+    if (this._wakeLockManager.isHeld || !Service.currentApp) {
       this._setIdleTimeout(0);
     // The screen should be turn off with shorter timeout if
     // it was never unlocked.
     } else if (!this._unlocking) {
-      if (window.System.locked && !window.secureWindowManager.isActive()) {
+      if (window.Service.locked && !window.secureWindowManager.isActive()) {
         this._setIdleTimeout(this.LOCKING_TIMEOUT, true);
         window.addEventListener('lockscreen-appclosing', this);
         window.addEventListener('lockpanelchange', this);
@@ -541,6 +506,8 @@ var ScreenManager = {
       this.setScreenBrightness(this._userBrightness, false);
     }
     this._deviceLightEnabled = enabled;
+
+    this._screenAutoBrightness.reset();
 
     if (!this.screenEnabled) {
       return;

@@ -1,18 +1,20 @@
 <!-- Content of LockScreen frame -->
+
 <div id="lockscreen-frame" hidden>
 
-  <link rel="stylesheet" type="text/css" href="lockscreen/style/lockscreen_fake_notification.css" />
-
-  <link rel="stylesheet" type="text/css" href="lockscreen/style/lockscreen_frame.css" />
-  <link rel="stylesheet" type="text/css" href="lockscreen/style/notifications.css" />
-
-  <link rel="stylesheet" type="text/css" href="lockscreen/style/lockscreen.css" />
+  <style scoped>
+    @import url("lockscreen/style/lockscreen_fake_notification.css");
+    @import url("lockscreen/style/lockscreen_frame.css");
+    @import url("lockscreen/style/notifications.css");
+    @import url("lockscreen/style/lockscreen.css");
+    @import url("lockscreen/style/lockscreen_media_playback.css");
+  </style>
 
   <script defer src="lockscreen/js/lockscreen_media_playback.js"></script>
-  <link rel="stylesheet" type="text/css" href="lockscreen/style/lockscreen_media_playback.css" />
 
   <script defer src="lockscreen/js/lockscreen_notification_builder.js"></script>
   <script defer src="lockscreen/js/lockscreen_notifications.js"></script>
+  <script defer src="lockscreen/js/lockscreen_charging.js"></script>
   <script defer src="lockscreen/js/lockscreen.js"></script>
 
   <script defer src="lockscreen/js/lockscreen_frame_agent.js"></script>
@@ -25,6 +27,7 @@
   <script defer src="lockscreen/js/lockscreen_state_slideshow.js"></script>
   <script defer src="lockscreen/js/lockscreen_state_slidehide.js"></script>
   <script defer src="lockscreen/js/lockscreen_state_unlock.js"></script>
+  <script defer src="lockscreen/js/lockscreen_state_secure_app_launching.js"></script>
   <script defer src="lockscreen/js/lockscreen_state_logger.js"></script>
   <script defer src="lockscreen/js/lockscreen_state_manager.js"></script>
   <script defer src="lockscreen/js/lockscreen_bootstrap.js"></script>
@@ -42,6 +45,7 @@
         </div>
         <div id="lockscreen-clock-time"></div>
         <div id="lockscreen-date"></div>
+        <div id="lockscreen-charging"></div>
       </div>
       <div id="notifications-lockscreen-container">
       </div>

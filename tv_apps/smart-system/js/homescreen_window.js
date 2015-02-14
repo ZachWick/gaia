@@ -83,7 +83,7 @@
       var app = window.applications.getByManifestURL(manifestURL);
       this.origin = app.origin;
       this.manifestURL = app.manifestURL;
-      this.url = app.origin + '/index.html#root';
+      this.url = app.origin + '/index.html';
 
       this.browser_config =
         new BrowserConfigHelper({
@@ -115,8 +115,8 @@
     'childWindowFactory': window.ChildWindowFactory
   };
 
-  HomescreenWindow.prototype.openAnimation = 'zoom-out';
-  HomescreenWindow.prototype.closeAnimation = 'zoom-in';
+  HomescreenWindow.prototype.openAnimation = 'immediate';
+  HomescreenWindow.prototype.closeAnimation = 'fade-out';
 
   HomescreenWindow.prototype._handle__opening = function hw__handle__opening() {
     this.ensure();
@@ -154,6 +154,7 @@
         if (this.element) {
           return;
         }
+        this.publish('created');
         this.render();
         this.open();
       }.bind(this));
@@ -193,7 +194,7 @@
         // Just kill front window but not switch to the first page.
         this.frontWindow.kill();
       } else {
-        this.browser.element.src = this.browser_config.url + Date.now();
+        this.browser.element.dataset.lastEnsure = Date.now();
       }
     }
 
@@ -229,9 +230,11 @@
    * this {HomescreenWindow}
    * memberof HomescreenWindow
    */
-  HomescreenWindow.prototype.showFadeOverlay = function hw_showFadeOverlay() {
-    this.fadeOverlay.classList.remove('hidden');
-  };
+  HomescreenWindow.prototype.showFadeOverlay =
+    function hw_showFadeOverlay(color) {
+      this.fadeOverlay.classList.remove('hidden');
+      this.fadeOverlay.style.backgroundColor = color || 'black';
+    };
 
   exports.HomescreenWindow = HomescreenWindow;
 }(window));

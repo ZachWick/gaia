@@ -57,7 +57,7 @@ suite('system/LockScreenWindow', function() {
     realL10n = window.navigator.mozL10n;
     window.navigator.mozL10n = MockL10n;
 
-    requireApp('system/js/system.js');
+    requireApp('system/js/service.js');
     requireApp('system/js/browser_config_helper.js');
     requireApp('system/js/browser_frame.js');
     requireApp('system/js/app_window.js');
@@ -94,7 +94,6 @@ suite('system/LockScreenWindow', function() {
       // Or the AppWindow would look for it.
       app.element = document.createElement('div');
       parentElement.appendChild(app.element);
-      app.transitionController = {};
       app.kill();
       assert.isTrue(stubDispatch.calledWithMatch(sinon.match(
           function(e) {
@@ -113,9 +112,6 @@ suite('system/LockScreenWindow', function() {
       // Or the AppWindow would look for it.
       app.element = document.createElement('div');
       parentElement.appendChild(app.element);
-      app.transitionController = {
-        requireClose: function() {}
-      };
       app.kill();
       app.close();
       assert.isTrue(stubDispatch.calledWithMatch(sinon.match(
@@ -146,5 +142,33 @@ suite('system/LockScreenWindow', function() {
     app.resize();
     assert.equal(app.height, app.layoutHeight());
     window.lockScreenWindowManager = originalLockScreenWindowManager;
+  });
+
+  test('lockOrientation', function() {
+    var mockScreen = {
+      mozLockOrientation: function() {
+        return true;
+      }
+    };
+    var originalOrientationManager = window.OrientationManager;
+    window.OrientationManager = {
+      isOnRealDevice: function() {
+        return true;
+      }
+    };
+    this.sinon.stub(window, 'screen', mockScreen);
+    var method = window.LockScreenWindow.prototype.lockOrientation;
+    this.sinon.stub(window, 'clearInterval');
+    var stubSetInterval = this.sinon.stub(window, 'setInterval', function() {
+      return 1;
+    });
+    var mockThis = {
+      orientationLockID: null
+    };
+    method.call(mockThis);
+    method.call(mockThis);
+    assert.isTrue(stubSetInterval.calledOnce);
+    assert.isFalse(stubSetInterval.calledTwice);
+    window.OrientationManager = originalOrientationManager;
   });
 });

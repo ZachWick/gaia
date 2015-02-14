@@ -1,9 +1,5 @@
 'use strict';
 
-var Home = require(
-  '../../../verticalhome/test/marionette/lib/home2');
-var System = require('./lib/system');
-var Actions = require('marionette-client').Actions;
 var helper = require('../../../../tests/js-marionette/helper.js');
 var assert = require('chai').assert;
 
@@ -19,16 +15,16 @@ marionette('Software Home Button - Modal Dialog', function() {
   var home, system, actions;
 
   setup(function() {
-    home = new Home(client);
-    system = new System(client);
-    actions = new Actions(client);
+    home = client.loader.getAppClass('verticalhome');
+    system = client.loader.getAppClass('system');
+    actions = client.loader.getActions();
     system.waitForStartup();
     helper.unlockScreen(client);
     home.waitForLaunch();
   });
 
   test('Proper layout for homescreen dialogs', function() {
-    actions.longPress(home.dividers[0], 1.5).perform();
+    home.openContextMenu();
     var contextMenuHeight = home.contextMenu.size().height;
     client.switchToFrame();
     assert.ok(contextMenuHeight === expectedHeight());

@@ -1,4 +1,4 @@
-/*global OptionMenu, MockL10n */
+/*global OptionMenu, MockL10n, TransitionEvent */
 
 'use strict';
 
@@ -63,7 +63,8 @@ suite('OptionMenu', function() {
 
     suite('menu.show()', function() {
       setup(function() {
-        this.sinon.spy(menu.form, 'focus');
+        this.sinon.stub(menu.form, 'focus');
+        this.sinon.stub(HTMLElement.prototype, 'blur');
         menu.show();
       });
 
@@ -72,14 +73,24 @@ suite('OptionMenu', function() {
           menu.form, document.body.lastElementChild
         );
       });
-      test('Focus form to dismiss keyboard', function() {
-        sinon.assert.called(menu.form.focus);
-      });
 
       test('Redundant shows have no effect', function() {
         sinon.spy(document.body, 'appendChild');
         menu.show();
         sinon.assert.notCalled(document.body.appendChild);
+      });
+
+      test('Prevent pointer events and focus', function() {
+        menu.show();
+        sinon.assert.called(HTMLElement.prototype.blur);
+        assert.equal(document.body.style.pointerEvents, 'none');
+        var transitionend = new TransitionEvent('transitionend', {
+          bubbles: true,
+          propertyName: 'transform'
+        });
+        menu.form.dispatchEvent(transitionend);
+        assert.equal(document.body.style.pointerEvents, 'initial');
+        sinon.assert.called(menu.form.focus);
       });
 
       suite('menu.hide()', function() {
@@ -153,6 +164,34 @@ suite('OptionMenu', function() {
       assert.isNull(menu.form.querySelector('section'));
     });
 
+    test('style doesn\'t affect confirm dialogs', function(next) {
+      var style = document.createElement('style');
+      style.textContent = '@import "../../../../shared/style/option_menu.css"';
+      var loaded = setInterval(function() {
+        try {
+          // We're waiting for an @import stylesheet to load, so wait for the
+          // inner set of cssRules.
+          style.sheet.cssRules[0].styleSheet.cssRules;
+          clearInterval(loaded);
+        } catch (e) {
+          // Waiting for stylesheet to load
+        } finally {
+          // Clear the interval again just in case we threw before calling
+          // clearInterval() the first time. This is necessary so we don't call
+          // the done() function multiple times.
+          clearInterval(loaded);
+          var form = document.createElement('form');
+          form.setAttribute('role', 'dialog');
+          form.setAttribute('data-type', 'confirm');
+          document.body.appendChild(form);
+          var compStyle = window.getComputedStyle(form);
+          assert.notEqual(compStyle.visibility, 'hidden');
+          next();
+        }
+      }, 10);
+      document.body.appendChild(style);
+    });
+
   });
 
   suite('Options', function() {
@@ -161,6 +200,9 @@ suite('OptionMenu', function() {
       buttons = menu.form.querySelectorAll('button');
     });
     test('Buttons', function() {
+      Array.forEach(buttons, (button) => {
+        assert.equal(button.type, 'button');
+      });
       assert.equal(buttons.length, 2);
     });
     test('Button Text', function() {

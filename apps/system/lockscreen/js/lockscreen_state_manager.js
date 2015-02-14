@@ -21,6 +21,7 @@
 /* global LockScreenStatePanelHide */
 /* global LockScreenStateUnlock */
 /* global LockScreenStateSlideRestore */
+/* global LockScreenStateSecureAppLaunching */
 /* global LockScreenStateLogger */
 
 'use strict';
@@ -83,12 +84,15 @@
         'lockscreen-request-lock',
         'lockscreen-notify-passcode-validationsuccess',
         'lockscreen-appclosed',
+        'lockscreenslide-activate-left',
         'lockscreenslide-activate-right',
         'lockscreen-keypad-input',
         'lockscreen-inputappopening',
         'lockscreen-inputappopened',
         'lockscreen-inputappclosed',
-        'secure-appopened'
+        'secure-appopened',
+        'secure-appclosing',
+        'secure-appterminated'
       ],
       observers: {
         'lockscreen.passcode-lock.enabled':
@@ -105,7 +109,9 @@
       keypadHiding: (new LockScreenStateKeypadHiding()).start(this.lockScreen),
       keypadRising: (new LockScreenStateKeypadRising()).start(this.lockScreen),
       panelHide: (new LockScreenStatePanelHide()).start(this.lockScreen),
-      unlock: (new LockScreenStateUnlock()).start(this.lockScreen)
+      unlock: (new LockScreenStateUnlock()).start(this.lockScreen),
+      secureAppLaunching: (new LockScreenStateSecureAppLaunching())
+        .start(this.lockScreen)
     };
 
     // Default values
@@ -120,7 +126,9 @@
       forciblyUnlock: false,
       inputpad: null,
       passcodeValidated: false,
-      secureAppOpen: false
+      secureAppOpen: false,
+      secureAppClose: false,
+      unlockingAppActivated: false
     };
     Object.freeze(this.lockScreenDefaultStates);
 
@@ -159,7 +167,9 @@
     this.states.slideRestore,
     'Restore the slider when secure app opened');
 
-    this.registerRule({},
+    this.registerRule({
+      screenOn: true
+    },
     ['slideRestore'],
     this.states.slideShow,
     'Show the slide after restore it');
@@ -230,6 +240,13 @@
     'When the screen is off, the slide should show as cache.');
 
     this.registerRule({
+      screenOn: false
+    },
+    ['slideShow'],
+    this.states.slideRestore,
+    'When the screen is off, the slide show be restored.');
+
+    this.registerRule({
       passcodeEnabled: true,
       screenOn: true,
       inputpad: 'open'
@@ -271,6 +288,29 @@
     ['keypadShow'],
     this.states.keypadHiding,
     'When user clean the key code, hide the pad.');
+
+    this.registerRule({
+      unlockingAppActivated: true,
+      passcodeEnabled: true
+    },
+    ['slideShow'],
+    this.states.secureAppLaunching,
+    'When user invoke secure app, move to the mode');
+
+    this.registerRule({
+      secureAppClose: true
+    },
+    ['secureAppLaunching'],
+    this.states.slideRestore,
+    'When user ended the secure app, restore the slide');
+
+    this.registerRule({
+      unlockingAppActivated: true,
+      passcodeEnabled: false
+    },
+    ['slideShow'],
+    this.states.slideRestore,
+    'When user invoke an app and unlock, restore the slide');
   };
 
   /**
@@ -371,6 +411,9 @@
       case 'lockscreen-notify-homepressed':
         this.onHomePressed();
         break;
+      case 'lockscreenslide-activate-left':
+        this.onUnlockingApp();
+        break;
       case 'lockscreenslide-activate-right':
       case 'lockscreen-notification-request-activate-unlock':
         this.onActivateUnlock();
@@ -402,6 +445,13 @@
         break;
       case 'secure-appopened':
         this.onSecureAppOpened();
+        break;
+      case 'secure-appclosing':
+      case 'secure-appterminated':
+        // closing: softKill
+        // terminated: kill
+        // @see: SecureAppManager
+        this.onSecureAppClosing();
         break;
     }
   };
@@ -492,6 +542,23 @@
   function lssm_onSecureAppOpened() {
     var inputs = this.extend(this.lockScreenStates, {
       secureAppOpen: true
+    });
+    this.transfer(inputs);
+  };
+
+  LockScreenStateManager.prototype.onSecureAppClosing =
+  function lssm_onSecureAppClosing() {
+    var inputs = this.extend(this.lockScreenStates, {
+      secureAppOpen: false,
+      secureAppClose: true
+    });
+    this.transfer(inputs);
+  };
+
+  LockScreenStateManager.prototype.onUnlockingApp =
+  function lssm_onUnlockingApp() {
+    var inputs = this.extend(this.lockScreenStates, {
+      unlockingAppActivated: true
     });
     this.transfer(inputs);
   };
